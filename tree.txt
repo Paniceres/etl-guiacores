@@ -1,0 +1,18 @@
+.
+├── data
+│   ├── collected_urls.txt
+│   ├── leads_contadores_cleaned.csv
+│   ├── leads_contadores.csv
+│   └── leads_from_local_files.csv
+├── html_samples
+│   ├── guiaCores_auditoriasContables.html
+│   ├── guiaCores_contadores.html
+│   ├── guia_cores_EstudioContable.html
+│   └── guiaCores_estudiosContables.html
+├── requirements.txt
+├── src
+│   ├── cleaner.py
+│   └── scraper.py
+└── tree.txt
+
+4 directories, 12 files
