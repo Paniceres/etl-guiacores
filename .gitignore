@@ -25,6 +25,7 @@ wheels/
 venv/
 ENV/
 .env
+.venv/
 
 # Archivos de datos y cachés
 *.csv
