@@ -1,5 +1,15 @@
+# Database
 DB_HOST=localhost
 DB_PORT=5432
-DB_NAME=etl_db
+DB_NAME=guiacores
 DB_USER=postgres
-DB_PASSWORD=postgres 
+DB_PASSWORD=your_password
+
+# Logging
+LOG_LEVEL=INFO
+LOG_FILE=logs/app.log
+
+# Collector
+MAX_WORKERS=4
+CHUNK_SIZE=100
+TIMEOUT=10 
