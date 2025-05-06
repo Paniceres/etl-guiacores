@@ -1,6 +1,94 @@
 import pandas as pd
 import re # Importar para usar expresiones regulares
 import os
+import psycopg2
+from psycopg2.extras import execute_values
+from datetime import datetime
+
+# Database configuration from environment variables
+DB_HOST = os.getenv('DB_HOST', 'localhost')
+DB_PORT = os.getenv('DB_PORT', '5432')
+DB_NAME = os.getenv('DB_NAME', 'etl_db')
+DB_USER = os.getenv('DB_USER', 'postgres')
+DB_PASSWORD = os.getenv('DB_PASSWORD', 'postgres')
+
+def get_db_connection():
+    """Establece conexión con la base de datos PostgreSQL"""
+    try:
+        conn = psycopg2.connect(
+            host=DB_HOST,
+            port=DB_PORT,
+            dbname=DB_NAME,
+            user=DB_USER,
+            password=DB_PASSWORD
+        )
+        return conn
+    except Exception as e:
+        print(f"Error al conectar a la base de datos: {e}")
+        raise
+
+def log_cleaning_session(start_time, end_time, total_processed, total_cleaned, status, error_message=None):
+    """Registra una sesión de limpieza en la base de datos"""
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO cleaning_log (
+                    start_time, end_time, total_leads_processed,
+                    total_leads_cleaned, status, error_message
+                ) VALUES (%s, %s, %s, %s, %s, %s)
+            """, (start_time, end_time, total_processed, total_cleaned, status, error_message))
+            conn.commit()
+    except Exception as e:
+        print(f"Error al registrar la sesión de limpieza: {e}")
+        raise
+    finally:
+        conn.close()
+
+def save_cleaned_leads_to_db(cleaned_data, source_ids):
+    """Guarda los leads limpios en la base de datos"""
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            # Preparar los datos para la inserción
+            values = []
+            for i, lead in enumerate(cleaned_data):
+                values.append((
+                    lead.get('Nombre', 'N/A'),
+                    lead.get('Email', 'N/A'),
+                    lead.get('Teléfono', 'N/A'),
+                    lead.get('Sitio Web', 'N/A'),
+                    lead.get('Facebook', 'N/A'),
+                    lead.get('Instagram', 'N/A'),
+                    lead.get('Rubros', 'N/A'),
+                    lead.get('Dirección', 'N/A'),
+                    source_ids[i] if i < len(source_ids) else None
+                ))
+
+            # Usar UPSERT para actualizar registros existentes
+            execute_values(cur, """
+                INSERT INTO leads_clean (
+                    nombre, email, telefono, sitio_web, facebook,
+                    instagram, rubros, direccion, source_id
+                ) VALUES %s
+                ON CONFLICT (source_id) DO UPDATE SET
+                    nombre = EXCLUDED.nombre,
+                    email = EXCLUDED.email,
+                    telefono = EXCLUDED.telefono,
+                    sitio_web = EXCLUDED.sitio_web,
+                    facebook = EXCLUDED.facebook,
+                    instagram = EXCLUDED.instagram,
+                    rubros = EXCLUDED.rubros,
+                    direccion = EXCLUDED.direccion,
+                    updated_at = CURRENT_TIMESTAMP
+            """, values)
+
+            conn.commit()
+    except Exception as e:
+        print(f"Error al guardar leads limpios en la base de datos: {e}")
+        raise
+    finally:
+        conn.close()
 
 def clean_phone_number(phone_str):
     """
@@ -26,9 +114,8 @@ def clean_leads_csv(input_csv_path='data/leads_contadores.csv', output_csv_path=
     """
     Lee el CSV de leads, realiza transformaciones y limpieza, y guarda el resultado.
     """
-    # Ajustar el input_csv_path por defecto para usar el archivo generado por el scraper AJAX
-    # Si quieres usar el archivo del scraper local, cambia esta línea:
-    # input_csv_path = 'data/leads_from_local_file.csv'
+    start_time = datetime.now()
+    source_ids = []
 
     if not os.path.exists(input_csv_path):
         print(f"Error: El archivo de entrada no se encuentra en {input_csv_path}")
@@ -45,22 +132,17 @@ def clean_leads_csv(input_csv_path='data/leads_contadores.csv', output_csv_path=
     print("Iniciando proceso de limpieza y transformación...")
 
     # 1. Limpiar y Deduplicar Teléfonos y WhatsApp
-    # Limpiamos cada número individualmente
     df['Teléfonos Limpios'] = df['Teléfonos'].apply(lambda x: [clean_phone_number(n) for n in str(x).split(',')] if pd.notna(x) and str(x).strip() != 'N/A' else [])
-    df['WhatsApp Limpio'] = df['WhatsApp'].apply(lambda x: clean_phone_number(x) if pd.notna(x) and str(x).strip() != 'N/A' else None) # Usar None para facilitar la lógica
+    df['WhatsApp Limpio'] = df['WhatsApp'].apply(lambda x: clean_phone_number(x) if pd.notna(x) and str(x).strip() != 'N/A' else None)
 
-    # Consolidar y Deduplicar Teléfonos
     def consolidate_and_deduplicate_phones(row):
         whatsapp = row['WhatsApp Limpio']
         other_phones_list = row['Teléfonos Limpios']
 
-        # Combinar WhatsApp y otros teléfonos en una sola lista (excluyendo N/A y vacíos)
         all_phones = [p for p in other_phones_list if p and p != 'N/A']
         if whatsapp and whatsapp != 'N/A':
-             all_phones.insert(0, whatsapp) # Insertar WhatsApp al principio si existe
+             all_phones.insert(0, whatsapp)
 
-        # Eliminar duplicados manteniendo el orden (aproximado)
-        # Usamos una lista auxiliar para mantener el orden de la primera aparición
         seen = set()
         deduplicated_phones = []
         for phone in all_phones:
@@ -71,77 +153,84 @@ def clean_leads_csv(input_csv_path='data/leads_contadores.csv', output_csv_path=
         return ', '.join(deduplicated_phones) if deduplicated_phones else 'N/A'
 
     df['Teléfono'] = df.apply(consolidate_and_deduplicate_phones, axis=1)
-
-    # Eliminamos las columnas temporales y las originales de teléfono/whatsapp
     df = df.drop(columns=['Teléfonos', 'WhatsApp', 'Teléfonos Limpios', 'WhatsApp Limpio'])
 
-
-    # 2. Eliminar duplicados de filas completas (esto ya estaba y es bueno mantenerlo)
+    # 2. Eliminar duplicados
     print(f"Número de filas antes de eliminar duplicados: {len(df)}")
     df.drop_duplicates(inplace=True)
     print(f"Número de filas después de eliminar duplicados: {len(df)}")
 
-
-    # 3. Limpieza Condicional de Redes Sociales
-    # Patrones de los enlaces genéricos de Guía Cores
+    # 3. Limpieza de Redes Sociales
     GUIA_CORES_FB_PATTERN = r'https://www.facebook.com/sharer/sharer.php\?u=https://www\.guiacores\.com\.ar%2Findex\.php%3Fr%3Dsearch%2Fdetail%26id%3D\d+%26idb%3D\d+'
     GUIA_CORES_IG_PATTERN = r'https://www\.instagram\.com/guiacores/'
 
     def clean_social_link(link, cores_pattern):
         if pd.isna(link) or str(link).strip() == '':
-            return '' # Dejar vacío si ya está vacío o N/A
+            return ''
         link_str = str(link).strip()
-        # Comprobar si el enlace coincide con el patrón genérico de Guía Cores
         if re.fullmatch(cores_pattern, link_str):
-            return '' # Eliminar si coincide con el patrón genérico
-        return link_str # Mantener si es un enlace diferente
+            return ''
+        return link_str
 
     df['Facebook'] = df['Facebook'].apply(lambda x: clean_social_link(x, GUIA_CORES_FB_PATTERN))
     df['Instagram'] = df['Instagram'].apply(lambda x: clean_social_link(x, GUIA_CORES_IG_PATTERN))
     print("Enlaces genéricos de Facebook e Instagram de Guía Cores eliminados.")
 
-
     # 4. Eliminar la columna Horario
     if 'Horario' in df.columns:
         df = df.drop(columns=['Horario'])
         print("Columna 'Horario' eliminada.")
-    else:
-        print("La columna 'Horario' no existe en el CSV.")
 
-
-    # 5. Establecer Rubros a "ESTUDIO CONTABLE"
-    df['Rubros'] = 'Estudio Contable' # Normalizamos la capitalización aquí directamente
-    print("Columna 'Rubros' establecida a 'Estudio Contable'.")
-
+    # 5. Establecer Rubros
+    df['Rubros'] = 'Estudio Contable'
 
     # 6. Normalizar capitalización
-    columns_to_normalize = ['Nombre', 'Dirección'] # Rubros ya se normalizó arriba
+    columns_to_normalize = ['Nombre', 'Dirección']
     for col in columns_to_normalize:
         if col in df.columns:
             df[col] = df[col].apply(normalize_capitalization)
             print(f"Capitalización normalizada para la columna '{col}'.")
-        else:
-            print(f"Advertencia: La columna '{col}' no existe para normalizar.")
 
-
-    # Reordenar columnas para que coincidan con el orden solicitado
-    # Nombre, Email, Teléfono, Sitio Web, Facebook, Instagram, Rubros, Dirección
+    # Reordenar columnas
     final_columns_order = ['Nombre', 'Email', 'Teléfono', 'Sitio Web', 'Facebook', 'Instagram', 'Rubros', 'Dirección']
-    # Filtramos las columnas que realmente existen en el DataFrame
     final_columns_order_existing = [col for col in final_columns_order if col in df.columns]
-    # Añadimos cualquier otra columna que pudiera existir y no esté en la lista de orden final (al final)
     other_columns = [col for col in df.columns if col not in final_columns_order_existing]
     df = df[final_columns_order_existing + other_columns]
 
+    try:
+        # Guardar en la base de datos
+        cleaned_data = df.to_dict('records')
+        save_cleaned_leads_to_db(cleaned_data, source_ids)
+        print("Datos limpios guardados exitosamente en la base de datos")
 
-    # 7. Guardar el CSV limpio
-    os.makedirs(os.path.dirname(output_csv_path), exist_ok=True)
-    df.to_csv(output_csv_path, index=False, encoding='utf-8')
-    print(f"Datos limpios guardados exitosamente en {output_csv_path}")
+        # También guardar en CSV como backup
+        os.makedirs(os.path.dirname(output_csv_path), exist_ok=True)
+        df.to_csv(output_csv_path, index=False, encoding='utf-8')
+        print(f"Backup CSV guardado en {output_csv_path}")
+
+        # Registrar la sesión de limpieza exitosa
+        end_time = datetime.now()
+        log_cleaning_session(
+            start_time=start_time,
+            end_time=end_time,
+            total_processed=len(df),
+            total_cleaned=len(df),
+            status='success'
+        )
+
+    except Exception as e:
+        # Registrar la sesión de limpieza fallida
+        end_time = datetime.now()
+        log_cleaning_session(
+            start_time=start_time,
+            end_time=end_time,
+            total_processed=len(df),
+            total_cleaned=0,
+            status='error',
+            error_message=str(e)
+        )
+        raise
 
 # Ejecutar el limpiador
 if __name__ == "__main__":
-    # Por defecto, limpia el archivo generado por el scraper AJAX
-    # Si quieres limpiar el archivo del scraper local, cambia la llamada a:
-    # clean_leads_csv(input_csv_path='data/leads_from_local_file.csv', output_csv_path='data/leads_from_local_file_cleaned.csv')
     clean_leads_csv()

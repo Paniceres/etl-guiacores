@@ -5,13 +5,23 @@ import os
 import time
 import urllib.parse
 import re
+import psycopg2
+from psycopg2.extras import execute_values
+from datetime import datetime
 
 # URLs
 BASE_URL = "https://www.guiacores.com.ar/"
 
+# Database configuration from environment variables
+DB_HOST = os.getenv('DB_HOST', 'localhost')
+DB_PORT = os.getenv('DB_PORT', '5432')
+DB_NAME = os.getenv('DB_NAME', 'etl_db')
+DB_USER = os.getenv('DB_USER', 'postgres')
+DB_PASSWORD = os.getenv('DB_PASSWORD', 'postgres')
+
 # Ruta al directorio que contiene los archivos HTML locales
-LOCAL_HTML_DIRECTORY_PATH = '/home/paniceres/code/web_scraping_project/html_samples/'
-OUTPUT_CSV_PATH = 'data/leads_from_local_files.csv' # Archivo de salida para este script
+LOCAL_HTML_DIRECTORY_PATH = '/app/html_samples/'
+OUTPUT_CSV_PATH = '/app/data/leads_from_local_files.csv'
 
 # --- Funciones de parsing (copiadas de scraper.py) ---
 # Se copian aquí para que este script sea independiente
@@ -152,98 +162,251 @@ def parse_detail_page(html_content):
 
     return data
 
+def get_db_connection():
+    """Establece conexión con la base de datos PostgreSQL"""
+    try:
+        conn = psycopg2.connect(
+            host=DB_HOST,
+            port=DB_PORT,
+            dbname=DB_NAME,
+            user=DB_USER,
+            password=DB_PASSWORD
+        )
+        return conn
+    except Exception as e:
+        print(f"Error al conectar a la base de datos: {e}")
+        raise
+
+def init_db():
+    """Inicializa las tablas necesarias en la base de datos"""
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            # Tabla para almacenar los leads
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS leads (
+                    id SERIAL PRIMARY KEY,
+                    contador_id VARCHAR(50) UNIQUE,
+                    nombre VARCHAR(255),
+                    direccion TEXT,
+                    telefonos TEXT,
+                    whatsapp VARCHAR(50),
+                    sitio_web TEXT,
+                    email VARCHAR(255),
+                    facebook TEXT,
+                    instagram TEXT,
+                    horario TEXT,
+                    rubros TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # Tabla para el log de scraping
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS scraping_log (
+                    id SERIAL PRIMARY KEY,
+                    start_time TIMESTAMP,
+                    end_time TIMESTAMP,
+                    total_leads_processed INTEGER,
+                    status VARCHAR(50),
+                    error_message TEXT
+                )
+            """)
+            
+            conn.commit()
+    except Exception as e:
+        print(f"Error al inicializar la base de datos: {e}")
+        raise
+    finally:
+        conn.close()
+
+def save_leads_to_db(leads_data):
+    """Guarda los leads en la base de datos"""
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            # Preparar los datos para la inserción
+            values = []
+            for lead in leads_data:
+                # Extraer el contador_id de la URL si está disponible
+                contador_id = None
+                if 'url' in lead:
+                    parsed_url = urllib.parse.urlparse(lead['url'])
+                    query_params = urllib.parse.parse_qs(parsed_url.query)
+                    contador_id = query_params.get('id', [None])[0]
+
+                values.append((
+                    contador_id,
+                    lead.get('Nombre', 'N/A'),
+                    lead.get('Dirección', 'N/A'),
+                    lead.get('Teléfonos', 'N/A'),
+                    lead.get('WhatsApp', 'N/A'),
+                    lead.get('Sitio Web', 'N/A'),
+                    lead.get('Email', 'N/A'),
+                    lead.get('Facebook', 'N/A'),
+                    lead.get('Instagram', 'N/A'),
+                    lead.get('Horario', 'N/A'),
+                    lead.get('Rubros', 'N/A')
+                ))
+
+            # Usar UPSERT para actualizar registros existentes
+            execute_values(cur, """
+                INSERT INTO leads (
+                    contador_id, nombre, direccion, telefonos, whatsapp,
+                    sitio_web, email, facebook, instagram, horario, rubros
+                ) VALUES %s
+                ON CONFLICT (contador_id) DO UPDATE SET
+                    nombre = EXCLUDED.nombre,
+                    direccion = EXCLUDED.direccion,
+                    telefonos = EXCLUDED.telefonos,
+                    whatsapp = EXCLUDED.whatsapp,
+                    sitio_web = EXCLUDED.sitio_web,
+                    email = EXCLUDED.email,
+                    facebook = EXCLUDED.facebook,
+                    instagram = EXCLUDED.instagram,
+                    horario = EXCLUDED.horario,
+                    rubros = EXCLUDED.rubros,
+                    updated_at = CURRENT_TIMESTAMP
+            """, values)
+
+            conn.commit()
+    except Exception as e:
+        print(f"Error al guardar leads en la base de datos: {e}")
+        raise
+    finally:
+        conn.close()
+
+def log_scraping_session(start_time, end_time, total_leads, status, error_message=None):
+    """Registra una sesión de scraping en la base de datos"""
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO scraping_log (
+                    start_time, end_time, total_leads_processed,
+                    status, error_message
+                ) VALUES (%s, %s, %s, %s, %s)
+            """, (start_time, end_time, total_leads, status, error_message))
+            conn.commit()
+    except Exception as e:
+        print(f"Error al registrar la sesión de scraping: {e}")
+        raise
+    finally:
+        conn.close()
+
 # --- Función principal para el script local ---
 
 def scrape_from_local_html_directory(directory_path):
     """
     Lee todos los archivos HTML en un directorio local, extrae URLs de detalle únicos
-    de todos ellos, visita cada URL único y extrae los datos, guardando en un CSV.
+    de todos ellos, visita cada URL único y extrae los datos, guardando en la base de datos.
     """
+    start_time = datetime.now()
     all_leads_data = []
-    # Usamos un diccionario para almacenar URLs únicas por ID de contador {id: url_completa}
     all_detail_urls_dict = {}
 
-    if not os.path.isdir(directory_path):
-        print(f"Error: El directorio local no se encuentra en {directory_path}")
-        return
+    try:
+        # Inicializar la base de datos
+        init_db()
 
-    print(f"Procesando archivos HTML en el directorio: {directory_path}")
+        if not os.path.isdir(directory_path):
+            print(f"Error: El directorio local no se encuentra en {directory_path}")
+            return
 
-    # Obtener la lista de archivos HTML en el directorio
-    html_files = [f for f in os.listdir(directory_path) if f.endswith('.html')]
-    if not html_files:
-        print(f"No se encontraron archivos HTML en el directorio {directory_path}")
-        return
+        print(f"Procesando archivos HTML en el directorio: {directory_path}")
 
-    print(f"Encontrados {len(html_files)} archivos HTML para procesar.")
+        # Obtener la lista de archivos HTML en el directorio
+        html_files = [f for f in os.listdir(directory_path) if f.endswith('.html')]
+        if not html_files:
+            print(f"No se encontraron archivos HTML en el directorio {directory_path}")
+            return
 
-    # --- Parte 1: Extraer URLs de detalle de todos los archivos locales ---
-    for file_name in html_files:
-        file_path = os.path.join(directory_path, file_name)
-        print(f"Extrayendo URLs de: {file_name}")
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                local_html_content = f.read()
+        print(f"Encontrados {len(html_files)} archivos HTML para procesar.")
 
-            # Parsear el contenido HTML del archivo actual
-            page_detail_urls_with_ids = parse_search_results_page(local_html_content)
+        # --- Parte 1: Extraer URLs de detalle de todos los archivos locales ---
+        for file_name in html_files:
+            file_path = os.path.join(directory_path, file_name)
+            print(f"Extrayendo URLs de: {file_name}")
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    local_html_content = f.read()
 
-            # Llenar el diccionario de URLs únicas con los resultados de este archivo
-            added_count = 0
-            for contador_id, detail_url in page_detail_urls_with_ids:
-                 if contador_id not in all_detail_urls_dict:
-                      all_detail_urls_dict[contador_id] = detail_url
-                      added_count += 1
-                 else:
-                      # Si el ID ya existe, actualizamos la URL por si acaso
-                      all_detail_urls_dict[contador_id] = detail_url
-            print(f"  Encontrados {len(page_detail_urls_with_ids)} URLs. Añadidos {added_count} IDs únicos.")
+                page_detail_urls_with_ids = parse_search_results_page(local_html_content)
 
-        except Exception as e:
-            print(f"Error al leer o parsear el archivo {file_name}: {e}. Saltando.")
-            continue
+                added_count = 0
+                for contador_id, detail_url in page_detail_urls_with_ids:
+                    if contador_id not in all_detail_urls_dict:
+                        all_detail_urls_dict[contador_id] = detail_url
+                        added_count += 1
+                    else:
+                        all_detail_urls_dict[contador_id] = detail_url
+                print(f"  Encontrados {len(page_detail_urls_with_ids)} URLs. Añadidos {added_count} IDs únicos.")
 
+            except Exception as e:
+                print(f"Error al leer o parsear el archivo {file_name}: {e}. Saltando.")
+                continue
 
-    print(f"Total de IDs de contador únicos (basado solo en 'id') recolectados de todos los archivos: {len(all_detail_urls_dict)}")
+        print(f"Total de IDs de contador únicos recolectados: {len(all_detail_urls_dict)}")
 
-    # --- Parte 2: Visitar cada URL de detalle único y extraer datos ---
-    print("Scrapeando páginas de detalle de los URLs únicos encontrados...")
-    # Iteramos sobre los valores (las URLs completas) del diccionario de URLs únicos
-    unique_detail_urls_list = list(all_detail_urls_dict.values())
-    print(f"Procesando {len(unique_detail_urls_list)} URLs únicas de detalle.")
+        # --- Parte 2: Visitar cada URL de detalle único y extraer datos ---
+        print("Scrapeando páginas de detalle de los URLs únicos encontrados...")
+        unique_detail_urls_list = list(all_detail_urls_dict.values())
+        print(f"Procesando {len(unique_detail_urls_list)} URLs únicas de detalle.")
 
-    for i, detail_url in enumerate(unique_detail_urls_list):
-        print(f"Procesando URL {i+1}/{len(unique_detail_urls_list)}: {detail_url}")
-        try:
-            # Realiza la petición HTTP a la URL de detalle
-            response = requests.get(detail_url)
-            response.raise_for_status() # Lanza una excepción para códigos de estado de error
-            detail_page_html = response.text
+        for i, detail_url in enumerate(unique_detail_urls_list):
+            print(f"Procesando URL {i+1}/{len(unique_detail_urls_list)}: {detail_url}")
+            try:
+                response = requests.get(detail_url)
+                response.raise_for_status()
+                detail_page_html = response.text
 
-            lead_data = parse_detail_page(detail_page_html)
-            all_leads_data.append(lead_data)
+                lead_data = parse_detail_page(detail_page_html)
+                lead_data['url'] = detail_url  # Añadir la URL al diccionario de datos
+                all_leads_data.append(lead_data)
 
-            # Añadir un pequeño retraso entre peticiones de página de detalle
-            time.sleep(0.5) # Espera 0.5 segundos
+                time.sleep(0.5)
 
-        except requests.exceptions.RequestException as e:
-            print(f"Error al obtener la página {detail_url}: {e}. Saltando.")
-            continue
-        except Exception as e:
-            print(f"Error inesperado al parsear la página {detail_url}: {e}. Saltando.")
-            continue
+            except requests.exceptions.RequestException as e:
+                print(f"Error al obtener la página {detail_url}: {e}. Saltando.")
+                continue
+            except Exception as e:
+                print(f"Error inesperado al parsear la página {detail_url}: {e}. Saltando.")
+                continue
 
-    # --- Parte 3: Guardar los datos en un CSV ---
-    if all_leads_data:
-        df = pd.DataFrame(all_leads_data)
+        # --- Parte 3: Guardar los datos en la base de datos ---
+        if all_leads_data:
+            save_leads_to_db(all_leads_data)
+            print(f"Datos guardados exitosamente en la base de datos")
+            
+            # También guardar en CSV como backup
+            df = pd.DataFrame(all_leads_data)
+            os.makedirs(os.path.dirname(OUTPUT_CSV_PATH), exist_ok=True)
+            df.to_csv(OUTPUT_CSV_PATH, index=False, encoding='utf-8')
+            print(f"Backup CSV guardado en {OUTPUT_CSV_PATH}")
+        else:
+            print("No se encontraron datos para guardar.")
 
-        # Define la ruta del archivo de salida
-        os.makedirs(os.path.dirname(OUTPUT_CSV_PATH), exist_ok=True)
+        # Registrar la sesión de scraping exitosa
+        end_time = datetime.now()
+        log_scraping_session(
+            start_time=start_time,
+            end_time=end_time,
+            total_leads=len(all_leads_data),
+            status='success'
+        )
 
-        df.to_csv(OUTPUT_CSV_PATH, index=False, encoding='utf-8')
-        print(f"Datos brutos guardados exitosamente en {OUTPUT_CSV_PATH}")
-    else:
-        print("No se encontraron datos para guardar.")
+    except Exception as e:
+        # Registrar la sesión de scraping fallida
+        end_time = datetime.now()
+        log_scraping_session(
+            start_time=start_time,
+            end_time=end_time,
+            total_leads=len(all_leads_data),
+            status='error',
+            error_message=str(e)
+        )
+        raise
 
 # Ejecutar el scraper desde el directorio de archivos locales
 if __name__ == "__main__":
