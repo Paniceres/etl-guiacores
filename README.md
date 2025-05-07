@@ -1,6 +1,6 @@
 # ETL Guía Cores
 
-Sistema ETL para procesar datos de la Guía Cores, con soporte para extracción masiva, secuencial y manual.
+Sistema ETL para procesar datos de la [Guía Cores](https://www.guiacores.com.ar), con soporte para extracción masiva, secuencial y manual.
 
 ## Estructura del Proyecto
 
@@ -54,9 +54,96 @@ cp exampleEnv .env
 # Editar .env con tus configuraciones
 ```
 
-## Uso
+## Ciclo de Vida de los Datos
 
-La aplicación se ejecuta a través de `main.py` y soporta diferentes modos de operación:
+### 1. Modo Masivo (Bulk)
+
+Este modo está diseñado para procesar grandes cantidades de datos de una vez:
+
+1. **Extracción**:
+   - Genera URLs para un rango de IDs
+   - Procesa cada URL en paralelo
+   - Almacena resultados temporalmente
+
+2. **Transformación** (automática):
+   - Normaliza URLs
+   - Limpia datos de comercios
+   - Estructura información
+
+3. **Carga**:
+   - Guarda en base de datos
+   - Genera archivos CSV/JSON
+   - Mantiene versiones mensuales
+
+### 2. Modo Secuencial
+
+Ideal para actualizaciones incrementales por rubro y localidad:
+
+1. **Extracción**:
+   - Navega por categorías
+   - Procesa resultados paginados
+   - Maneja carga dinámica
+
+2. **Transformación** (automática):
+   - Valida datos por rubro
+   - Normaliza ubicaciones
+   - Actualiza relaciones
+
+3. **Carga**:
+   - Actualiza registros existentes
+   - Inserta nuevos registros
+   - Mantiene historial de cambios
+
+### 3. Modo Manual
+
+Para procesar datos específicos de dos formas:
+
+#### A. Usando archivo HTML guardado:
+
+1. **Preparación**:
+   - Realizar búsqueda en [Guía Cores](https://www.guiacores.com.ar)
+   - Hacer clic en "Ver más" hasta cargar todos los resultados
+   - Guardar página completa como HTML
+   - Colocar archivo en `data/html_samples/`
+
+2. **Procesamiento**:
+```bash
+python main.py --mode manual --html data/html_samples/mi_busqueda.html --output both
+```
+
+#### B. Usando URL de búsqueda:
+
+1. **Preparación**:
+   - Realizar búsqueda avanzada en [Guía Cores](https://www.guiacores.com.ar)
+   - Copiar URL de resultados
+   - Ejecutar con la URL
+
+2. **Procesamiento**:
+```bash
+python main.py --mode manual --url "https://www.guiacores.com.ar/index.php?r=search%2Findex&b=&R=&L=10&Tm=1" --output both
+```
+
+## Transformaciones Automáticas
+
+El sistema aplica automáticamente las siguientes transformaciones:
+
+1. **URLs**:
+   - Normalización de formatos
+   - Validación de enlaces
+   - Extracción de parámetros
+
+2. **Datos de Comercios**:
+   - Limpieza de nombres
+   - Normalización de direcciones
+   - Formateo de teléfonos
+   - Validación de emails
+
+3. **Categorías y Ubicaciones**:
+   - Normalización de rubros
+   - Geocodificación de direcciones
+   - Validación de localidades
+
+## Uso
 
 ### 1. Modo Masivo (Bulk)
 
@@ -89,10 +176,15 @@ Opciones:
 Para procesar datos de una página específica:
 
 ```bash
-python main.py --mode manual --url "https://guiacores.com/detalle/123" --output both
+# Usando archivo HTML
+python main.py --mode manual --html data/html_samples/mi_busqueda.html --output both
+
+# Usando URL
+python main.py --mode manual --url "https://www.guiacores.com.ar/detalle/123" --output both
 ```
 
 Opciones:
+- `--html`: Ruta al archivo HTML guardado
 - `--url`: URL de la página a procesar
 - `--output`: Tipo de salida (database/file/both)
 
@@ -106,28 +198,6 @@ Todos los modos soportan estas opciones adicionales:
   - `both`: Guarda en ambos
 - `--version`: Versión de los datos (default: YYYY-MM)
 - `--log-level`: Nivel de logging (DEBUG/INFO/WARNING/ERROR)
-
-### Ejemplos de Uso
-
-1. Procesar todos los comercios de Neuquén:
-```bash
-python main.py --mode sequential --localidades "Neuquén" --output both
-```
-
-2. Actualizar datos de farmacias:
-```bash
-python main.py --mode sequential --rubros "Farmacias" --output database
-```
-
-3. Procesar un rango específico de IDs:
-```bash
-python main.py --mode bulk --start-id 1000 --end-id 2000 --output file
-```
-
-4. Procesar una página específica:
-```bash
-python main.py --mode manual --url "https://guiacores.com/detalle/123" --output both
-```
 
 ## Estructura de Datos
 
