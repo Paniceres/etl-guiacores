@@ -1,33 +1,76 @@
 # ETL Guía Cores
 
-Sistema ETL para procesar datos de la [Guía Cores](https://www.guiacores.com.ar), con soporte para extracción masiva, secuencial y manual.
+Proyecto ETL para extraer, transformar y cargar datos de Guía Cores.
 
-## Estructura del Proyecto
+## 🚀 Características
 
+- Extracción de datos mediante web scraping
+- Soporte para múltiples modos de operación:
+  - Manual: Extracción de una URL específica
+  - Secuencial: Extracción por rubros
+  - Bulk: Extracción masiva por rangos de IDs
+- Almacenamiento flexible:
+  - Archivos locales (CSV, JSON)
+  - Base de datos PostgreSQL
+- Configuración mediante variables de entorno
+- Logging detallado
+- Manejo de errores y reintentos
+- Dockerizado para fácil despliegue
+
+## 📋 Prerrequisitos
+
+- Python 3.11+
+- Docker y Docker Compose (opcional, para ejecución en contenedor)
+- PostgreSQL (opcional, para almacenamiento en base de datos)
+
+## 🔧 Instalación
+
+### Instalación de Docker y Docker Compose
+
+1. Instalar Docker:
+```bash
+# Para Arch Linux (Manjaro)
+sudo pacman -S docker
+
+# Para Ubuntu/Debian
+sudo apt-get update
+sudo apt-get install docker.io
+
+# Para Fedora
+sudo dnf install docker
 ```
-etl_guiaCores/
-├── src/
-│   ├── 0_common/           # Módulos comunes y utilidades
-│   ├── 1_extractors/       # Extractores de datos
-│   │   ├── bulk/          # Extracción masiva
-│   │   ├── sequential/    # Extracción secuencial
-│   │   └── manual/        # Extracción manual
-│   ├── 2_transformers/    # Transformadores de datos
-│   └── 3_loaders/         # Cargadores de datos
-├── tests/                 # Tests unitarios
-├── data/                  # Datos procesados
-│   ├── json/             # Versiones JSON
-│   └── csv/              # Versiones CSV
-└── main.py               # Punto de entrada principal
+
+2. Iniciar y habilitar el servicio de Docker:
+```bash
+sudo systemctl start docker
+sudo systemctl enable docker
 ```
 
-## Requisitos
+3. Agregar tu usuario al grupo docker:
+```bash
+sudo usermod -aG docker $USER
+# Cerrar sesión y volver a iniciar para que los cambios surtan efecto
+```
 
-- Python 3.8+
-- PostgreSQL 12+
-- Chrome/Chromium (para web scraping)
+4. Instalar Docker Compose:
+```bash
+# Para Arch Linux (Manjaro)
+sudo pacman -S docker-compose
 
-## Instalación
+# Para Ubuntu/Debian
+sudo apt-get install docker-compose
+
+# Para Fedora
+sudo dnf install docker-compose
+```
+
+5. Verificar la instalación:
+```bash
+docker --version
+docker-compose --version
+```
+
+### Instalación Local del Proyecto
 
 1. Clonar el repositorio:
 ```bash
@@ -40,7 +83,7 @@ cd etl_guiaCores
 python -m venv .venv
 source .venv/bin/activate  # Linux/Mac
 # o
-.venv\Scripts\activate     # Windows
+.venv\Scripts\activate  # Windows
 ```
 
 3. Instalar dependencias:
@@ -54,194 +97,147 @@ cp exampleEnv .env
 # Editar .env con tus configuraciones
 ```
 
-## Ciclo de Vida de los Datos
+### Instalación con Docker
 
-### 1. Modo Masivo (Bulk)
-
-Este modo está diseñado para procesar grandes cantidades de datos de una vez:
-
-1. **Extracción**:
-   - Genera URLs para un rango de IDs
-   - Procesa cada URL en paralelo
-   - Almacena resultados temporalmente
-
-2. **Transformación** (automática):
-   - Normaliza URLs
-   - Limpia datos de comercios
-   - Estructura información
-
-3. **Carga**:
-   - Guarda en base de datos
-   - Genera archivos CSV/JSON
-   - Mantiene versiones mensuales
-
-### 2. Modo Secuencial
-
-Ideal para actualizaciones incrementales por rubro y localidad:
-
-1. **Extracción**:
-   - Navega por categorías
-   - Procesa resultados paginados
-   - Maneja carga dinámica
-
-2. **Transformación** (automática):
-   - Valida datos por rubro
-   - Normaliza ubicaciones
-   - Actualiza relaciones
-
-3. **Carga**:
-   - Actualiza registros existentes
-   - Inserta nuevos registros
-   - Mantiene historial de cambios
-
-### 3. Modo Manual
-
-Para procesar datos específicos de dos formas:
-
-#### A. Usando archivo HTML guardado:
-
-1. **Preparación**:
-   - Realizar búsqueda en [Guía Cores](https://www.guiacores.com.ar)
-   - Hacer clic en "Ver más" hasta cargar todos los resultados
-   - Guardar página completa como HTML
-   - Colocar archivo en `data/html_samples/`
-
-2. **Procesamiento**:
+1. Construir la imagen:
 ```bash
-python main.py --mode manual --html data/html_samples/mi_busqueda.html --output both
+./build_and_run.sh
 ```
 
-#### B. Usando URL de búsqueda:
+## 🚀 Uso
 
-1. **Preparación**:
-   - Realizar búsqueda avanzada en [Guía Cores](https://www.guiacores.com.ar)
-   - Copiar URL de resultados
-   - Ejecutar con la URL
+### Ejecución Local
 
-2. **Procesamiento**:
+1. Modo Manual:
 ```bash
-python main.py --mode manual --url "https://www.guiacores.com.ar/index.php?r=search%2Findex&b=&R=&L=10&Tm=1" --output both
+python src/main.py manual --url "https://www.guiacores.com.ar/index.php?r=search%2Findex" --output file
 ```
 
-## Transformaciones Automáticas
-
-El sistema aplica automáticamente las siguientes transformaciones:
-
-1. **URLs**:
-   - Normalización de formatos
-   - Validación de enlaces
-   - Extracción de parámetros
-
-2. **Datos de Comercios**:
-   - Limpieza de nombres
-   - Normalización de direcciones
-   - Formateo de teléfonos
-   - Validación de emails
-
-3. **Categorías y Ubicaciones**:
-   - Normalización de rubros
-   - Geocodificación de direcciones
-   - Validación de localidades
-
-## Uso
-
-### 1. Modo Masivo (Bulk)
-
-Para procesar grandes cantidades de datos de una vez:
-
+2. Modo Secuencial:
 ```bash
-python main.py --mode bulk --start-id 1 --end-id 1000 --output database
+python src/main.py sequential --rubros "rubro1,rubro2" --output file
 ```
 
-Opciones:
-- `--start-id`: ID inicial (default: 1)
-- `--end-id`: ID final (default: 1000)
-- `--output`: Tipo de salida (database/file/both)
-
-### 2. Modo Secuencial
-
-Para procesar datos por rubro y localidad:
-
+3. Modo Bulk:
 ```bash
-python main.py --mode sequential --rubros "Farmacias,Supermercados" --localidades "Neuquén,Cipolletti" --output file
+python src/main.py bulk --start-id 1 --end-id 100 --output file
 ```
 
-Opciones:
-- `--rubros`: Lista de rubros separados por coma
-- `--localidades`: Lista de localidades separadas por coma
-- `--output`: Tipo de salida (database/file/both)
+### Ejecución con Docker
 
-### 3. Modo Manual
-
-Para procesar datos de una página específica:
-
+1. Usando docker-compose:
 ```bash
-# Usando archivo HTML
-python main.py --mode manual --html data/html_samples/mi_busqueda.html --output both
-
-# Usando URL
-python main.py --mode manual --url "https://www.guiacores.com.ar/detalle/123" --output both
+# Asegúrate de que docker-compose está instalado
+docker-compose up
 ```
 
-Opciones:
-- `--html`: Ruta al archivo HTML guardado
-- `--url`: URL de la página a procesar
-- `--output`: Tipo de salida (database/file/both)
-
-### Opciones Generales
-
-Todos los modos soportan estas opciones adicionales:
-
-- `--output`: Tipo de salida
-  - `database`: Guarda en PostgreSQL
-  - `file`: Guarda en CSV/JSON
-  - `both`: Guarda en ambos
-- `--version`: Versión de los datos (default: YYYY-MM)
-- `--log-level`: Nivel de logging (DEBUG/INFO/WARNING/ERROR)
-
-## Estructura de Datos
-
-### Base de Datos
-
-Los datos se almacenan en las siguientes tablas:
-
-- `businesses`: Información de comercios
-- `locations`: Ubicaciones
-- `categories`: Categorías/rubros
-- `business_categories`: Relación comercio-categoría
-
-### Archivos
-
-Los datos se guardan en:
-
-- `data/json/YYYY-MM/businesses.json`: Datos en formato JSON
-- `data/csv/YYYY-MM/businesses.csv`: Datos en formato CSV
-
-## Tests
-
-Ejecutar los tests:
-
+2. Usando Docker directamente:
 ```bash
-python -m unittest discover tests
+# Modo Manual
+docker run -it --rm \
+    -v $(pwd)/data:/app/data \
+    -v $(pwd)/logs:/app/logs \
+    etl_guia_cores manual \
+    --url "https://www.guiacores.com.ar/index.php?r=search%2Findex" \
+    --output file
+
+# Modo Secuencial
+docker run -it --rm \
+    -v $(pwd)/data:/app/data \
+    -v $(pwd)/logs:/app/logs \
+    etl_guia_cores sequential \
+    --rubros "rubro1,rubro2" \
+    --output file
+
+# Modo Bulk
+docker run -it --rm \
+    -v $(pwd)/data:/app/data \
+    -v $(pwd)/logs:/app/logs \
+    etl_guia_cores bulk \
+    --start-id 1 \
+    --end-id 100 \
+    --output file
 ```
 
-## Docker
+## 📁 Estructura del Proyecto
 
-Construir y ejecutar con Docker:
-
-```bash
-docker build -t etl_guiaCores .
-docker run -it --env-file .env etl_guiaCores
+```
+etl_guiaCores/
+├── data/               # Directorio para datos
+│   ├── raw/           # Datos sin procesar
+│   └── processed/     # Datos procesados
+├── logs/              # Logs de la aplicación
+├── src/               # Código fuente
+│   ├── common/        # Utilidades comunes
+│   ├── manual/        # Modo manual
+│   ├── sequential/    # Modo secuencial
+│   └── bulk/          # Modo bulk
+├── tests/             # Tests unitarios
+├── .env               # Variables de entorno
+├── .dockerignore      # Archivos ignorados por Docker
+├── docker-compose.yml # Configuración de Docker Compose
+├── Dockerfile         # Configuración de Docker
+├── requirements.txt   # Dependencias de Python
+└── README.md         # Este archivo
 ```
 
-## Contribuir
+## ⚙️ Configuración
 
-1. Fork el repositorio
+### Variables de Entorno
+
+Crear un archivo `.env` basado en `exampleEnv`:
+
+```env
+# Base de datos
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=etl_guia_cores
+DB_USER=postgres
+DB_PASSWORD=your_password
+
+# Configuración de la aplicación
+LOG_LEVEL=INFO
+OUTPUT_DIR=data/processed
+```
+
+### Opciones de Comando
+
+- `--mode`: Modo de operación (manual, sequential, bulk)
+- `--url`: URL para extracción (modo manual)
+- `--rubros`: Lista de rubros separados por coma (modo sequential)
+- `--start-id`: ID inicial (modo bulk)
+- `--end-id`: ID final (modo bulk)
+- `--output`: Formato de salida (file, database, both)
+
+## 🧪 Tests
+
+Ejecutar tests:
+```bash
+pytest tests/
+```
+
+## 📝 Logs
+
+Los logs se almacenan en el directorio `logs/` con el siguiente formato:
+- `etl_YYYY-MM-DD.log`: Logs diarios
+- `error_YYYY-MM-DD.log`: Logs de error
+
+## 🤝 Contribución
+
+1. Fork el proyecto
 2. Crear una rama para tu feature (`git checkout -b feature/AmazingFeature`)
 3. Commit tus cambios (`git commit -m 'Add some AmazingFeature'`)
 4. Push a la rama (`git push origin feature/AmazingFeature`)
 5. Abrir un Pull Request
 
-## Licencia
+## 📄 Licencia
 
-Este proyecto está bajo la Licencia MIT - ver el archivo [LICENSE](LICENSE) para más detalles. 
+Este proyecto está bajo la Licencia MIT - ver el archivo [LICENSE](LICENSE) para más detalles.
+
+## ✨ Características Adicionales
+
+- [ ] Soporte para más formatos de salida
+- [ ] Interfaz web para monitoreo
+- [ ] API REST para consultas
+- [ ] Dashboard de métricas
+- [ ] Sistema de notificaciones 

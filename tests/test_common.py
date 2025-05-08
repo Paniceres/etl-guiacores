@@ -5,33 +5,28 @@ from src.common.versioning import DataVersioning
 from src.common.config import Config
 from src.common.db import Database
 from src.common.utils import Utils
+from datetime import datetime
+from pathlib import Path
 
 class TestDataVersioning(unittest.TestCase):
     def setUp(self):
-        self.temp_dir = tempfile.mkdtemp()
-        self.versioner = DataVersioning(self.temp_dir)
+        self.versioner = DataVersioning()
+        self.test_data = {
+            'timestamp': datetime.now().isoformat(),
+            'total_urls': 10,
+            'urls': ['http://example.com/1', 'http://example.com/2']
+        }
 
-    def tearDown(self):
-        import shutil
-        shutil.rmtree(self.temp_dir)
+    def test_version_data(self):
+        version = self.versioner.version_bulk_data(self.test_data)
+        self.assertIsInstance(version, str)
+        self.assertTrue(version.startswith('v'))
 
-    def test_version_json_file(self):
-        test_data = {'test': 'data'}
-        versioned_path = self.versioner.version_json_file('test.json', data=test_data)
-        self.assertIsNotNone(versioned_path)
-        self.assertTrue(os.path.exists(versioned_path))
-
-    def test_version_csv_file(self):
-        test_data = [{'col1': 'val1', 'col2': 'val2'}]
-        versioned_path = self.versioner.version_csv_file('test.csv', data=test_data)
-        self.assertIsNotNone(versioned_path)
-        self.assertTrue(os.path.exists(versioned_path))
-
-    def test_get_latest_version(self):
-        test_data = {'test': 'data'}
-        self.versioner.version_json_file('test.json', data=test_data)
-        latest = self.versioner.get_latest_version('test.json')
-        self.assertIsNotNone(latest)
+    def test_get_version_path(self):
+        version = 'v1.0.0'
+        path = self.versioner.get_version_path(version)
+        self.assertIsInstance(path, Path)
+        self.assertTrue(str(path).endswith(version))
 
 class TestConfig(unittest.TestCase):
     def setUp(self):

@@ -2,20 +2,34 @@ import os
 from pathlib import Path
 from typing import Dict, Any
 import yaml
+from dotenv import load_dotenv
+
+# Cargar variables de entorno
+load_dotenv()
 
 # Directorios base
 BASE_DIR = Path(__file__).parent.parent.parent
+SRC_DIR = BASE_DIR / 'src'
 DATA_DIR = BASE_DIR / 'data'
-LOGS_DIR = BASE_DIR / 'logs'
+LOGS_DIR = DATA_DIR / 'logs'
 
 # Crear directorios si no existen
 DATA_DIR.mkdir(exist_ok=True)
 LOGS_DIR.mkdir(exist_ok=True)
 
+# Configuración de logs
+COLLECTOR_LOGS = str(LOGS_DIR / 'collector' / 'collector_guiaCores_bulk.log')
+SCRAPER_LOGS = str(LOGS_DIR / 'scraper' / 'scraper_guiaCores_bulk.log')
+CLEANER_LOGS = str(LOGS_DIR / 'cleaner' / 'cleaner_guiaCores_bulk.log')
+
+# Crear directorios de logs si no existen
+for log_dir in [LOGS_DIR / 'collector', LOGS_DIR / 'scraper', LOGS_DIR / 'cleaner']:
+    log_dir.mkdir(exist_ok=True)
+
 # Configuración de la base de datos
 DB_CONFIG = {
     'host': os.getenv('DB_HOST', 'localhost'),
-    'port': int(os.getenv('DB_PORT', '5432')),
+    'port': int(os.getenv('DB_PORT', 5432)),
     'database': os.getenv('DB_NAME', 'guiacores'),
     'user': os.getenv('DB_USER', 'postgres'),
     'password': os.getenv('DB_PASSWORD', 'postgres')
@@ -57,89 +71,36 @@ LOG_CONFIG = {
 # Configuración de la aplicación
 APP_CONFIG = {
     'base_url': 'https://www.guiacores.com.ar',
-    'search_url': 'https://www.guiacores.com.ar/index.php?r=search%2Findex',
-    'detail_url': 'https://www.guiacores.com.ar/index.php?r=search/detail',
-    'timeout': 10,
+    'timeout': 30,
     'retry_attempts': 3,
     'retry_delay': 5
 }
 
-# Configuración de los extractores
+# Configuración del extractor
 EXTRACTOR_CONFIG = {
-    'manual': {
-        'html_dir': str(DATA_DIR / 'html'),
-        'max_file_size': 10 * 1024 * 1024,  # 10MB
-        'default_path': 'data/html_samples'
-    },
-    'sequential': {
-        'max_pages': 10,
-        'click_delay': 2,
-        'load_timeout': 10,
-        'script_timeout': 30,
-        'implicit_wait': 10,
-        'button_selector': '.load-more',
-        'business_selector': '.business-item',
-        'search_url': 'https://www.guiacores.com.ar/buscar.php',
-        'retry': {
-            'max_attempts': 3,
-            'delay': 5,
-            'backoff_factor': 2
-        },
-        'proxy': {
-            'enabled': False,
-            'http': None,
-            'https': None,
-            'no_proxy': 'localhost,127.0.0.1'
-        },
-        'browser': {
-            'headless': True,
-            'disable_gpu': True,
-            'disable_dev_shm_usage': True,
-            'no_sandbox': True,
-            'window_size': '1920,1080',
-            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
-    },
     'bulk': {
-        'min_id': 1,
-        'max_id': 99999,
+        'start_id': 1,
+        'end_id': 99999,
         'chunk_size': 100,
         'max_workers': 4,
-        'timeout': 10,
-        'detail_url': 'https://www.guiacores.com.ar/detalle.php'
+        'timeout': 30,
+        'base_url': 'https://www.guiacores.com.ar/index.php?r=search/detail&id='
     }
 }
 
-# Configuración de los transformadores
+# Configuración del transformador
 TRANSFORMER_CONFIG = {
-    'url': {
-        'max_length': 255,
-        'allowed_schemes': ['http', 'https'],
-        'allowed_domains': ['guiacores.com.ar']
-    },
-    'business': {
-        'required_fields': ['name', 'url'],
-        'optional_fields': ['address', 'phone', 'description', 'rubro', 'localidad']
-    }
+    'clean_text': True,
+    'normalize_phones': True,
+    'validate_emails': True,
+    'validate_urls': True
 }
 
-# Configuración de los cargadores
+# Configuración del loader
 LOADER_CONFIG = {
-    'database': {
-        'batch_size': 1000,
-        'max_retries': 3,
-        'retry_delay': 5
-    },
-    'file': {
-        'output_dir': str(DATA_DIR / 'processed'),
-        'format': 'json',
-        'compression': False
-    },
-    'cache': {
-        'enabled': True,
-        'ttl': 3600,  # 1 hora
-        'max_size': 1000
-    }
+    'batch_size': 1000,
+    'max_retries': 3,
+    'retry_delay': 5
 }
 
 # Configuración de las tablas

@@ -1,101 +1,87 @@
 .
 ├── data
-│   ├── collected_urls.txt
-│   ├── html_samples
-│   │   ├── guiaCores_auditoriasContables.html
-│   │   ├── guiaCores_contadores.html
-│   │   ├── guia_cores_EstudioContable.html
-│   │   ├── guiaCores_estudiosContables.html
-│   │   ├── guiaCores-general.html
-│   │   └── localidadesyrubros.txt
-│   ├── logs
-│   │   ├── cleaner
-│   │   └── collector
-│   │       ├── cleaner.log
-│   │       ├── scraper.log
-│   │       ├── url_collector_bulk.log
-│   │       └── url_collector.log
-│   ├── processed
-│   │   ├── csv
-│   │   │   ├── guiaCores_leads_cleaned.csv
-│   │   │   └── guiaCores_leads_cleaned.txt
-│   │   └── json
-│   ├── raw
-│   │   ├── csv
-│   │   │   └── guiaCores_leads.csv
-│   │   └── json
-│   │       ├── collected_urls_core_10.json
-│   │       ├── collected_urls_core_11.json
-│   │       ├── collected_urls_core_12.json
-│   │       ├── collected_urls_core_1.json
-│   │       ├── collected_urls_core_2.json
-│   │       ├── collected_urls_core_3.json
-│   │       ├── collected_urls_core_4.json
-│   │       ├── collected_urls_core_5.json
-│   │       ├── collected_urls_core_6.json
-│   │       ├── collected_urls_core_7.json
-│   │       ├── collected_urls_core_8.json
-│   │       ├── collected_urls_core_9.json
-│   │       ├── collected_urls_final.json
-│   │       ├── collected_urls.json
-│   │       ├── guiaCores_urls_bulk.json
-│   │       ├── guiaCores_urls.json
-│   │       ├── scraping_stats.json
-│   │       └── total_pages.json
-│   ├── README.md
-│   └── temp
+│   ├── collected_urls.txt
+│   ├── html_samples
+│   │   ├── guiaCores_auditoriasContables.html
+│   │   ├── guiaCores_contadores.html
+│   │   ├── guia_cores_EstudioContable.html
+│   │   ├── guiaCores_estudiosContables.html
+│   │   ├── guiaCores-general.html
+│   │   └── localidadesyrubros.txt
+│   ├── logs
+│   │   ├── cleaner
+│   │   └── collector
+│   │       ├── cleaner.log
+│   │       ├── scraper.log
+│   │       ├── url_collector_bulk.log
+│   │       └── url_collector.log
+│   ├── processed
+│   │   ├── csv
+│   │   │   ├── guiaCores_leads_cleaned.csv
+│   │   │   └── guiaCores_leads_cleaned.txt
+│   │   └── json
+│   ├── raw
+│   │   ├── csv
+│   │   │   └── guiaCores_leads.csv
+│   │   └── json
+│   │       ├── collected_urls_core_10.json
+│   │       ├── collected_urls_core_11.json
+│   │       ├── collected_urls_core_12.json
+│   │       ├── collected_urls_core_1.json
+│   │       ├── collected_urls_core_2.json
+│   │       ├── collected_urls_core_3.json
+│   │       ├── collected_urls_core_4.json
+│   │       ├── collected_urls_core_5.json
+│   │       ├── collected_urls_core_6.json
+│   │       ├── collected_urls_core_7.json
+│   │       ├── collected_urls_core_8.json
+│   │       ├── collected_urls_core_9.json
+│   │       ├── collected_urls_final.json
+│   │       ├── collected_urls.json
+│   │       ├── guiaCores_urls_bulk.json
+│   │       ├── guiaCores_urls.json
+│   │       ├── scraping_stats.json
+│   │       └── total_pages.json
+│   ├── README.md
+│   └── temp
 ├── Dockerfile
-├── etl_guiaCores
-│   ├── data
-│   │   ├── html_samples
-│   │   ├── processed
-│   │   └── raw
-│   ├── logs
-│   └── src
-│       ├── common
-│       ├── extractors
-│       ├── loaders
-│       └── transformers
 ├── exampleEnv
 ├── LICENSE
 ├── README.md
 ├── requirements.txt
 ├── src
-│   ├── bulk
-│   │   ├── cleaner.py
-│   │   ├── collector.py
-│   │   └── scraper.py
-│   ├── collectors
-│   ├── common
-│   │   ├── base.py
-│   │   ├── config.py
-│   │   ├── db.py
-│   │   ├── __init__.py
-│   │   └── utils.py
-│   ├── extractors
-│   │   ├── bulk_extractor.py
-│   │   ├── contact.py
-│   │   ├── manual_extractor.py
-│   │   └── sequential_extractor.py
-│   ├── loaders
-│   │   ├── cache_loader.py
-│   │   ├── database_loader.py
-│   │   ├── db.py
-│   │   └── file_loader.py
-│   ├── main.py
-│   ├── manual
-│   │   ├── cleaner.py
-│   │   └── scraper.py
-│   ├── sequential
-│   │   ├── cleaner.py
-│   │   ├── collector.py
-│   │   ├── scraper.py
-│   │   └── test_cleaner_guiaCores.py
-│   └── transformers
-│       ├── business_transformer.py
-│       ├── contact.py
-│       ├── data_cleaner.py
-│       └── url_transformer.py
+│   ├── common
+│   │   ├── __init__.py
+│   │   ├── base.py
+│   │   ├── config.py
+│   │   ├── db.py
+│   │   ├── utils.py
+│   │   └── versioning.py
+│   ├── extractors
+│   │   ├── __init__.py
+│   │   ├── bulk_collector.py
+│   │   ├── bulk_scraper.py
+│   │   ├── manual_scraper.py
+│   │   ├── sequential_collector.py
+│   │   └── sequential_scraper.py
+│   ├── transformers
+│   │   ├── __init__.py
+│   │   ├── business_transformer.py
+│   │   ├── data_cleaner.py
+│   │   └── url_transformer.py
+│   ├── loaders
+│   │   ├── __init__.py
+│   │   ├── cache_loader.py
+│   │   ├── database_loader.py
+│   │   └── file_loader.py
+│   ├── __init__.py
+│   └── main.py
+├── tests
+│   ├── __init__.py
+│   ├── test_common.py
+│   ├── test_extractors.py
+│   ├── test_loaders.py
+│   └── test_transformers.py
 └── tree.txt
 
 33 directories, 66 files

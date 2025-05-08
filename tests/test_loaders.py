@@ -1,6 +1,6 @@
 import unittest
 import os
-import tempfile
+import json
 from src.loaders.database_loader import DatabaseLoader
 from src.loaders.file_loader import FileLoader
 from src.loaders.cache_loader import CacheLoader
@@ -14,13 +14,13 @@ class TestDatabaseLoader(unittest.TestCase):
         self.assertIsNotNone(connection)
         connection.close()
 
-    def test_save_data(self):
-        test_data = {
+    def test_save(self):
+        data = {
             'id': 1,
             'name': 'Test Business',
             'address': 'Test Address'
         }
-        result = self.loader.save_data(test_data)
+        result = self.loader.save(data)
         self.assertTrue(result)
 
     def test_load_data(self):
@@ -29,24 +29,25 @@ class TestDatabaseLoader(unittest.TestCase):
 
 class TestFileLoader(unittest.TestCase):
     def setUp(self):
-        self.temp_dir = tempfile.mkdtemp()
-        self.loader = FileLoader(base_path=self.temp_dir)
+        self.loader = FileLoader()
+        self.test_file = 'test_data.json'
 
     def tearDown(self):
-        import shutil
-        shutil.rmtree(self.temp_dir)
+        if os.path.exists(self.test_file):
+            os.remove(self.test_file)
 
     def test_save_json(self):
-        test_data = {'test': 'data'}
-        result = self.loader.save_json(test_data, 'test.json')
+        data = {
+            'id': 1,
+            'name': 'Test Business',
+            'address': 'Test Address'
+        }
+        result = self.loader.save(data, self.test_file)
         self.assertTrue(result)
-        self.assertTrue(os.path.exists(os.path.join(self.temp_dir, 'test.json')))
-
-    def test_load_json(self):
-        test_data = {'test': 'data'}
-        self.loader.save_json(test_data, 'test.json')
-        loaded_data = self.loader.load_json('test.json')
-        self.assertEqual(loaded_data, test_data)
+        self.assertTrue(os.path.exists(self.test_file))
+        with open(self.test_file, 'r') as f:
+            saved_data = json.load(f)
+        self.assertEqual(saved_data, data)
 
     def test_save_csv(self):
         test_data = [{'col1': 'val1', 'col2': 'val2'}]
@@ -56,25 +57,30 @@ class TestFileLoader(unittest.TestCase):
 
 class TestCacheLoader(unittest.TestCase):
     def setUp(self):
-        self.cache = CacheLoader()
+        self.loader = CacheLoader()
 
-    def test_set_get(self):
-        self.cache.set('test_key', 'test_value')
-        value = self.cache.get('test_key')
-        self.assertEqual(value, 'test_value')
+    def test_save_and_get(self):
+        data = {
+            'id': 1,
+            'name': 'Test Business',
+            'address': 'Test Address'
+        }
+        self.loader.save(data, 'test_key')
+        retrieved = self.loader.get('test_key')
+        self.assertEqual(retrieved, data)
 
     def test_delete(self):
-        self.cache.set('test_key', 'test_value')
-        self.cache.delete('test_key')
-        value = self.cache.get('test_key')
+        self.loader.save(data, 'test_key')
+        self.loader.delete('test_key')
+        value = self.loader.get('test_key')
         self.assertIsNone(value)
 
     def test_clear(self):
-        self.cache.set('key1', 'value1')
-        self.cache.set('key2', 'value2')
-        self.cache.clear()
-        self.assertIsNone(self.cache.get('key1'))
-        self.assertIsNone(self.cache.get('key2'))
+        self.loader.save(data, 'key1')
+        self.loader.save(data, 'key2')
+        self.loader.clear()
+        self.assertIsNone(self.loader.get('key1'))
+        self.assertIsNone(self.loader.get('key2'))
 
 if __name__ == '__main__':
     unittest.main() 
