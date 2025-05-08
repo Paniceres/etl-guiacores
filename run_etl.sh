@@ -82,5 +82,5 @@ case $MODE in
 esac
 
 # Ejecutar docker-compose con el comando apropiado
-echo -e "${YELLOW}Ejecutando ETL en modo $MODE...${NC}"
-ETL_COMMAND="$ETL_COMMAND" docker-compose up 
+echo -e "${YELLOW}Ejecutando ETL en modo $MODE con podman-compose...${NC}\n"
+ETL_COMMAND="$ETL_COMMAND" podman-compose up

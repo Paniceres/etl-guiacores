@@ -22,10 +22,10 @@ if [ ! -f "Dockerfile" ]; then
 fi
 
 # Construir la imagen
-echo "Construyendo imagen Docker..."
-docker build -t etl_guia_cores . || error "Error al construir la imagen Docker"
+echo "Construyendo imagen con Podman buildx..."
+podman buildx build --platform linux/amd64 -t etl_guia_cores_podman . || error "Error al construir la imagen con Podman buildx"
 
-success "Imagen construida exitosamente"
+success "Imagen construida exitosamente con Podman buildx"
 
 # Mostrar ayuda
 echo "
@@ -37,24 +37,24 @@ Uso:
    docker run -it --rm \\
        -v \$(pwd)/data:/app/data \\
        -v \$(pwd)/logs:/app/logs \\
-       etl_guia_cores [modo] [opciones]
+       etl_guia_cores_podman [modo] [opciones]
 
 Ejemplos:
    # Modo manual
    docker run -it --rm \\
        -v \$(pwd)/data:/app/data \\
        -v \$(pwd)/logs:/app/logs \\
-       etl_guia_cores manual --url \"https://www.guiacores.com.ar/index.php?r=search%2Findex\" --output file
+       etl_guia_cores_podman manual --url \"https://www.guiacores.com.ar/index.php?r=search%2Findex\" --output file
 
    # Modo secuencial
    docker run -it --rm \\
        -v \$(pwd)/data:/app/data \\
        -v \$(pwd)/logs:/app/logs \\
-       etl_guia_cores sequential --rubros \"rubro1,rubro2\" --output file
+       etl_guia_cores_podman sequential --rubros \"rubro1,rubro2\" --output file
 
    # Modo bulk
    docker run -it --rm \\
        -v \$(pwd)/data:/app/data \\
        -v \$(pwd)/logs:/app/logs \\
-       etl_guia_cores bulk --start-id 1 --end-id 100 --output file
+       etl_guia_cores_podman bulk --start-id 1 --end-id 100 --output file
 " 
