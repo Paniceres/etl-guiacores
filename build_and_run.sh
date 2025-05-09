@@ -3,7 +3,7 @@
 # Colores para output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
 # Función para mostrar mensajes de error
 error() {
@@ -21,11 +21,14 @@ if [ ! -f "Dockerfile" ]; then
     error "Debes ejecutar este script desde el directorio raíz del proyecto"
 fi
 
-# Construir la imagen
-echo "Construyendo imagen Docker..."
-docker build -t etl_guia_cores . || error "Error al construir la imagen Docker"
+# Inicializar Buildx si no existe un builder
+docker buildx inspect etl_guiacores_builder &> /dev/null || docker buildx create --name etl-guiacores_builder
 
-success "Imagen construida exitosamente"
+# Usar Buildx para construir la imagen
+echo "Construyendo imagen Docker con Buildx..."
+docker buildx build -t etl-guiacores . --builder etl-guiacores_builder || error "Error al construir la imagen Docker"
+
+success "Imagen construida exitosamente con Buildx"
 
 # Mostrar ayuda
 echo "
@@ -37,24 +40,5 @@ Uso:
    docker run -it --rm \\
        -v \$(pwd)/data:/app/data \\
        -v \$(pwd)/logs:/app/logs \\
-       etl_guia_cores [modo] [opciones]
-
-Ejemplos:
-   # Modo manual
-   docker run -it --rm \\
-       -v \$(pwd)/data:/app/data \\
-       -v \$(pwd)/logs:/app/logs \\
-       etl_guia_cores manual --url \"https://www.guiacores.com.ar/index.php?r=search%2Findex\" --output file
-
-   # Modo secuencial
-   docker run -it --rm \\
-       -v \$(pwd)/data:/app/data \\
-       -v \$(pwd)/logs:/app/logs \\
-       etl_guia_cores sequential --rubros \"rubro1,rubro2\" --output file
-
-   # Modo bulk
-   docker run -it --rm \\
-       -v \$(pwd)/data:/app/data \\
-       -v \$(pwd)/logs:/app/logs \\
-       etl_guia_cores bulk --start-id 1 --end-id 100 --output file
-" 
+       etl-guiacores [modo] [opciones]
+"

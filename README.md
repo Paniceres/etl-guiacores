@@ -74,7 +74,7 @@ docker-compose --version
 
 1. Clonar el repositorio:
 ```bash
-git clone https://github.com/tu-usuario/etl_guiaCores.git
+git clone https://github.com/Paniceres/etl_guiaCores.git
 cd etl_guiaCores
 ```
 
