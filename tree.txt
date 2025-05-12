@@ -1,6 +1,5 @@
 .
 ├── data
-│   ├── collected_urls.txt
 │   ├── html_samples
 │   │   ├── guiaCores_auditoriasContables.html
 │   │   ├── guiaCores_contadores.html
