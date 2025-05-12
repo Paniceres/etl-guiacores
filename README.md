@@ -59,7 +59,7 @@ etl_guiaCores/
 
 1.  **Clonar el Repositorio:**
     ```bash
-    git clone https://github.com/tu-usuario/etl_guiaCores.git # Reemplaza con la URL de tu repo
+    git clone https://github.com/Paniceres/etl_guiaCores.git 
     cd etl_guiaCores
     ```
 
@@ -67,7 +67,7 @@ etl_guiaCores/
     Copia el archivo de plantilla `exampleEnv` a `.env` y personalízalo con tu configuración, especialmente las credenciales de la base de datos PostgreSQL.
     ```bash
     cp exampleEnv .env
-    nano .env  # O usa tu editor preferido (ej. vim, code)
+    vim .env
     ```
     Asegúrate de que `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, y `DB_PASSWORD` estén correctamente configurados. Si usas la base de datos del `docker-compose.yml`, `DB_HOST` debe ser el nombre del servicio de la base de datos (por defecto, `db`).
 
