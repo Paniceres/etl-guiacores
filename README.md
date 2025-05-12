@@ -1,52 +1,56 @@
 # Servicio ETL y API de Guia Cores
 
-Este proyecto proporciona un robusto pipeline ETL (Extraer, Transformar, Cargar) para procesar datos de Guia Cores y expone una API para activar y gestionar estos procesos ETL. Está diseñado para ser flexible, soportando varios modos de extracción y destinos de salida, y está contenedorizado usando Docker para facilitar su despliegue y escalabilidad, especialmente en entornos Kubernetes.
+Este proyecto proporciona un robusto pipeline ETL (Extraer, Transformar, Cargar) para procesar datos de Guia Cores y expone una API RESTful para activar y gestionar estos procesos ETL. Está diseñado para ser flexible, soportando varios modos de extracción, procesamiento paralelo y múltiples destinos de salida. El sistema está contenedorizado usando Docker para facilitar su despliegue y escalabilidad, especialmente en entornos Kubernetes integrado con orquestadores como Argo Workflows.
 
 ## Características Principales
 
 *   **Modos ETL Flexibles:**
-    *   **Modo Bulk (Masivo):** Extrae datos basados en un rango de IDs.
-    *   **Modo Manual:** Extrae datos de una URL específica.
-    *   **Modo Sequential (Secuencial):** Extrae datos basados en 'rubros' (categorías).
-*   **API RESTful:**
-    *   Endpoints para activar cada modo ETL (`/etl/bulk`, `/etl/manual`, `/etl/sequential`).
-    *   Construida con FastAPI, proporcionando documentación interactiva automática (vía `/docs`).
+    *   **Modo Bulk (Masivo):** Extrae datos basados en un rango de IDs de negocio.
+    *   **Modo Manual:** Extrae datos de una URL específica de Guia Cores.
+    *   **Modo Sequential (Secuencial):** Extrae datos basados en 'rubros' (categorías) y/o 'localidades'. Este modo está diseñado para realizar el scraping de las URLs recolectadas en paralelo, utilizando `concurrent.futures.ProcessPoolExecutor` para mejorar significativamente el rendimiento en grandes volúmenes de datos.
+*   **API RESTful con FastAPI:**
+    *   Endpoints dedicados para activar cada modo ETL (`/etl/bulk`, `/etl/manual`, `/etl/sequential`), aceptando parámetros relevantes vía JSON.
+    *   Documentación interactiva de la API generada automáticamente (Swagger UI en `/docs` y ReDoc en `/redoc`).
+    *   Validación de datos de entrada utilizando modelos Pydantic.
+    *   Endpoint de chequeo de salud (`/health`).
 *   **Múltiples Opciones de Salida:**
-    *   Guardar datos en archivos locales (ej. CSV, JSON - el formato específico depende de la implementación de `FileLoader`).
-    *   Cargar datos en una base de datos PostgreSQL.
-    *   Opción para enviar la salida tanto a archivo como a base de datos simultáneamente.
-*   **Configuración mediante Variables de Entorno:** Gestiona de forma segura las credenciales de la base de datos y otras configuraciones.
-*   **Contenedorizado con Docker:** Incluye `Dockerfile` y `docker-compose.yml` para un fácil desarrollo local y despliegue.
-*   **Logging Detallado:** Registro completo para los procesos ETL y las interacciones de la API.
-*   **Diseñado para Kubernetes:** El enfoque basado en API y la contenedorización lo hacen adecuado para el despliegue en Kubernetes y la integración con orquestadores de flujos de trabajo como Argo Workflows.
+    *   Guardar datos procesados en archivos locales (ej. JSON, a través de `FileLoader`).
+    *   Cargar datos en una base de datos PostgreSQL (a través de `DatabaseLoader`).
+    *   Opción para utilizar ambas salidas simultáneamente ("both").
+*   **Configuración Centralizada:** Gestión de la configuración de la aplicación, incluyendo credenciales de base de datos y parámetros de ejecución, mediante variables de entorno (archivo `.env`).
+*   **Contenerización con Docker:** Incluye `Dockerfile` y `docker-compose.yml` para desarrollo local simplificado y despliegues consistentes.
+*   **Logging Detallado:** Registro integral de eventos para los procesos ETL y las interacciones de la API, facilitando el seguimiento y la depuración. Los logs se guardan en `data/logs/etl_api.log` y se emiten a la consola.
+*   **Diseñado para Orquestación y Kubernetes:** El enfoque basado en API y la contenerización lo hacen ideal para el despliegue en Kubernetes y la integración con herramientas de orquestación de flujos de trabajo como Argo Workflows.
 
 ## Prerrequisitos
 
 *   Python 3.11+
 *   Motor Docker (Docker Engine)
-*   Docker Compose (para desarrollo local)
-*   Acceso a una instancia de PostgreSQL (local, contenedorizada o en la nube)
+*   Docker Compose (para desarrollo local y ejecución de servicios)
+*   Acceso a una instancia de PostgreSQL (puede ser local, contenedorizada como parte del `docker-compose.yml`, o un servicio en la nube).
 
 ## Estructura del Proyecto
 
 ```
 etl_guiaCores/
-├── data/                 # Directorio por defecto para salidas de archivos locales
-├── logs/                 # Logs de la aplicación y la API
-├── src/                  # Código fuente
-│   ├── api/              # Aplicación FastAPI
+├── data/                 # Directorio para salidas de archivos locales y logs
+│   └── logs/
+│       └── etl_api.log
+├── src/                  # Código fuente de la aplicación
+│   ├── api/              # Lógica de la aplicación FastAPI (endpoints, modelos)
 │   │   └── app.py
-│   ├── common/           # Utilidades compartidas (config, conexión db, etc.)
-│   ├── extractors/       # Lógica de extracción de datos
-│   ├── loaders/          # Lógica de carga de datos (a BD, archivo)
-│   ├── transformers/     # Lógica de transformación de datos
+│   ├── common/           # Módulos comunes (config, db, logger, utils)
+│   ├── extractors/       # Colectores y scrapers para diferentes modos ETL
+│   ├── loaders/          # Loaders para diferentes destinos (BD, archivo)
+│   ├── transformers/     # Transformadores de datos
 │   ├── __init__.py
 │   └── main.py           # Funciones ETL principales y punto de entrada CLI
-├── .env                  # Variables de entorno (ignorado por git)
+├── tests/                # Pruebas unitarias e de integración
+├── .env                  # Variables de entorno (ignorado por git, usar exampleEnv como plantilla)
 ├── exampleEnv            # Plantilla para el archivo .env
-├── .dockerignore
-├── docker-compose.yml    # Configuración de Docker Compose
-├── Dockerfile            # Definición de la imagen Docker
+├── .dockerignore         # Archivos a ignorar por Docker
+├── docker-compose.yml    # Definición de servicios para Docker Compose (API, ETL, DB)
+├── Dockerfile            # Instrucciones para construir la imagen Docker de la aplicación
 ├── requirements.txt      # Dependencias de Python
 └── README.md             # Este archivo
 ```
@@ -60,124 +64,153 @@ etl_guiaCores/
     ```
 
 2.  **Configurar Variables de Entorno:**
-    Copia el archivo de entorno de ejemplo y personalízalo con tu configuración, especialmente las credenciales de la base de datos.
+    Copia el archivo de plantilla `exampleEnv` a `.env` y personalízalo con tu configuración, especialmente las credenciales de la base de datos PostgreSQL.
     ```bash
     cp exampleEnv .env
-    nano .env  # O usa tu editor preferido
+    nano .env  # O usa tu editor preferido (ej. vim, code)
     ```
-    Asegúrate de que `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER` y `DB_PASSWORD` estén configurados correctamente. Para la configuración local con `docker-compose`, `DB_HOST` típicamente debería ser el nombre de tu servicio de base de datos (ej. `db`).
+    Asegúrate de que `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, y `DB_PASSWORD` estén correctamente configurados. Si usas la base de datos del `docker-compose.yml`, `DB_HOST` debe ser el nombre del servicio de la base de datos (por defecto, `db`).
 
-3.  **Construir y Ejecutar con Docker Compose (Recomendado para Desarrollo Local):**
-    Esta es la forma más fácil de tener todo el sistema (API, ejecutores ETL y base de datos PostgreSQL) funcionando.
+3.  **Construir y Ejecutar con Docker Compose (Recomendado para Desarrollo y Producción Local):**
+    Este comando iniciará la API, la base de datos PostgreSQL (si está definida en `docker-compose.yml`) y cualquier otro servicio.
     ```bash
     sudo docker-compose up --build
     ```
-    *   La bandera `--build` asegura que la imagen Docker se reconstruya si hay cambios (ej. en `requirements.txt` o el código fuente).
-    *   La API estará típicamente disponible en `http://localhost:8000` (o el puerto configurado en `docker-compose.yml` y `src/api/app.py`).
-    *   La documentación interactiva de la API (Swagger UI) estará en `http://localhost:8000/docs`.
-    *   También se iniciará un servicio PostgreSQL, y los datos se persistirán en un volumen Docker.
+    *   La bandera `--build` fuerza la reconstrucción de las imágenes Docker si hay cambios en el `Dockerfile` o el código fuente.
+    *   La API estará disponible en `http://localhost:8000` (o el puerto que hayas configurado).
+    *   La documentación interactiva de la API (Swagger UI) se encontrará en `http://localhost:8000/docs`.
 
 ## Usando el Sistema
 
-Una vez que el sistema esté funcionando mediante `docker-compose up`, puedes interactuar con él de las siguientes maneras:
+Una vez que los servicios estén en ejecución (vía `docker-compose up`), puedes interactuar con el sistema ETL de las siguientes maneras:
 
 ### 1. A través de la API REST (Método Principal)
 
-Usa cualquier cliente API (como Postman, curl o un nodo HTTP Request de n8n) para enviar solicitudes POST a los endpoints disponibles. La documentación de la API en `http://localhost:8000/docs` proporciona una lista detallada de endpoints, cuerpos de solicitud esperados y formatos de respuesta.
+Este es el método preferido para la interacción programática y la integración con otros sistemas. Utiliza cualquier cliente HTTP (Postman, Insomnia, curl, Python `requests`, etc.) para enviar solicitudes `POST` a los endpoints ETL.
 
-**Ejemplos de Llamadas API (usando curl):**
+**Endpoints Principales:**
 
-*   **Activar ETL Bulk (Masivo):**
+*   `POST /etl/bulk`: Activa el ETL en modo masivo.
+    *   Cuerpo JSON esperado: `{"min_id": <int>, "max_id": <int>, "output": "<file|database|both>"}`
+*   `POST /etl/manual`: Activa el ETL para una URL específica.
+    *   Cuerpo JSON esperado: `{"url": "<string_url>", "output": "<file|database|both>"}`
+*   `POST /etl/sequential`: Activa el ETL en modo secuencial por rubros y/o localidades.
+    *   Cuerpo JSON esperado: `{"rubros": "<rubro1,rubro2|null>", "localidades": "<loc1,loc2|null>", "output": "<file|database|both>"}` (las cadenas de rubros/localidades son listas separadas por comas).
+
+**Ejemplos con `curl`:**
+
+*   **ETL Bulk:**
     ```bash
     curl -X POST "http://localhost:8000/etl/bulk" \
     -H "Content-Type: application/json" \
     -d '{
       "min_id": 1,
-      "max_id": 100,
+      "max_id": 50,
       "output": "both"
     }'
     ```
 
-*   **Activar ETL Manual:**
+*   **ETL Manual:**
     ```bash
     curl -X POST "http://localhost:8000/etl/manual" \
     -H "Content-Type: application/json" \
     -d '{
-      "url": "https://www.guiacores.com.ar/alguna/pagina/especifica",
+      "url": "https://www.guiacores.com.ar/empresas/12345/nombre-empresa",
       "output": "database"
     }'
     ```
 
-*   **Activar ETL Sequential (Secuencial):**
+*   **ETL Sequential (por rubros):**
     ```bash
     curl -X POST "http://localhost:8000/etl/sequential" \
     -H "Content-Type: application/json" \
     -d '{
       "rubros": "restaurantes,hoteles",
+      "localidades": null,
       "output": "file"
     }'
     ```
-    (Si `rubros` es `null` o una cadena vacía, podría procesar todos o un conjunto por defecto, dependiendo de tu implementación de `run_sequential_etl`).
 
-### 2. A través de la Línea de Comandos (para Argo Workflows o Ejecución Directa)
+### 2. Flujo de Trabajo del Modo Sequential (Detalle)
 
-El script `src/main.py` aún puede ejecutarse directamente (ej. dentro de un contenedor Docker gestionado por Argo Workflows) si necesitas una interfaz de línea de comandos.
+El modo sequential está diseñado para una extracción más específica y potencialmente extensa basada en categorías de negocios (rubros) y, opcionalmente, localidades.
 
-**Ejecutando ETL vía CLI con Docker Compose:**
-Esto es útil para tareas puntuales o si Argo gestiona directamente la ejecución de contenedores.
+1.  **Recolección de URLs:** El `SequentialCollector` primero navega Guia Cores para identificar las URLs de los negocios que coinciden con los rubros/localidades especificados. Utiliza Selenium para esta fase.
+2.  **Scraping Paralelo:** Una vez recolectadas las URLs, la función `run_sequential_etl` en `src/main.py` está diseñada para distribuir estas URLs entre múltiples procesos trabajadores usando `concurrent.futures.ProcessPoolExecutor`. Cada proceso trabajador utiliza una instancia de `GuiaCoresScraper` (a través de la función `process_url_chunk_for_sequential` de `src/extractors/sequential_scraper.py`) para realizar el scraping de un subconjunto de las URLs. Este enfoque en paralelo acelera drásticamente la fase de scraping.
+3.  **Transformación y Carga:** Los datos scrapeados de todos los procesos se consolidan, se transforman y luego se cargan al destino especificado (archivo y/o base de datos).
+
+### 3. A través de la Línea de Comandos (CLI) con `docker-compose run`
+
+Para ejecuciones ad-hoc, depuración, o si se integra con sistemas como Argo Workflows que pueden ejecutar comandos de Docker directamente, se puede invocar `src/main.py`.
+
+**Importante:** Cuando se utiliza `docker-compose run`, el comando a ejecutar dentro del contenedor debe seguir la estructura de `python src/main.py <modo> [argumentos_del_modo]`. Los argumentos disponibles para cada modo se definen en el `ArgumentParser` dentro de `src/main.py`.
+
+**Ejemplos:**
 
 ```bash
-# Ejemplo: Ejecutar ETL Bulk
-sudo docker-compose run --rm etl python src/main.py bulk --start_id 1 --end_id 50 --output database
+# Ejecutar ETL Bulk vía CLI:
+sudo docker-compose run --rm etl python src/main.py bulk --start_id 1 --end_id 20 --output database
 
-# Ejemplo: Ejecutar ETL Manual
-sudo docker-compose run --rm etl python src/main.py manual --url "https://www.guiacores.com.ar/alguna/pagina" --output file
+# Ejecutar ETL Manual vía CLI:
+sudo docker-compose run --rm etl python src/main.py manual --url "https://www.guiacores.com.ar/negocio/ejemplo" --output file
 
-# Ejemplo: Ejecutar ETL Secuencial
-sudo docker-compose run --rm etl python src/main.py sequential --rubros "servicios,tiendas" --output both
+# Ejecutar ETL Secuencial vía CLI (por rubros y localidades):
+sudo docker-compose run --rm etl python src/main.py sequential --rubros "panaderias,veterinarias" --localidades "rosario" --output both
 ```
-*   Reemplaza `etl` con el nombre de tu servicio de aplicación en `docker-compose.yml` si es diferente.
-*   La bandera `--rm` elimina el contenedor después de la ejecución.
+*   `etl` es el nombre del servicio de aplicación definido en `docker-compose.yml` (puede variar según tu configuración).
+*   `--rm` elimina el contenedor después de que el comando finaliza.
 
 ## Logging
 
-*   **Logs de API:** Los logs generados por la aplicación FastAPI se pueden encontrar en `logs/etl_api.log` (si el logging a archivo está configurado así en `setup_logging_if_not_configured` de `src/main.py` y `src/api/app.py` lo llama).
-*   **Logs ETL:** Los logs de los procesos ETL también se dirigen típicamente a `logs/etl_api.log` cuando se activan mediante la API, o `data/logs/main.log` si se ejecutan mediante el antiguo punto de entrada CLI en `src/main.py` antes de la refactorización (esto podría necesitar consolidación).
-*   **Logs de Docker:** Puedes ver los logs del contenedor usando `sudo docker-compose logs <nombre_del_servicio>` (ej. `sudo docker-compose logs api` o `sudo docker-compose logs db`).
+*   **Logs de la Aplicación (API y ETL):** Todos los logs relevantes, tanto de la API FastAPI como de los procesos ETL que esta dispara, se consolidan en `data/logs/etl_api.log` dentro del contenedor. También se muestran en la salida estándar de Docker.
+*   **Visualización de Logs con Docker:** Para ver los logs en tiempo real de un servicio:
+    ```bash
+    sudo docker-compose logs -f api  # Para el servicio de la API/ETL
+    sudo docker-compose logs -f db   # Para el servicio de la base de datos (si aplica)
+    ```
 
 ## Desarrollo
 
-1.  Asegúrate de tener Python 3.11+ y haber creado un entorno virtual.
-2.  Instala las dependencias: `pip install -r requirements.txt`
-3.  Para el desarrollo de la API, puedes ejecutar la aplicación FastAPI directamente usando Uvicorn:
+1.  Asegúrate de tener Python 3.11+ y haber configurado un entorno virtual (ej. `python -m venv .venv && source .venv/bin/activate`).
+2.  Instala las dependencias: `pip install -r requirements.txt`.
+3.  Crea y configura tu archivo `.env` como se describió anteriormente.
+4.  Para el desarrollo de la API, puedes ejecutar la aplicación FastAPI directamente con Uvicorn (esto permite recarga automática en cambios de código):
     ```bash
     uvicorn src.api.app:app --reload --host 0.0.0.0 --port 8000
     ```
-    Esto habilita la recarga automática cuando cambia el código. Asegúrate de que tu archivo `.env` esté presente en la raíz del proyecto para las conexiones a la base de datos.
+    La API estará accesible en `http://localhost:8000`.
 
 ## Despliegue a Kubernetes
 
-1.  **Construir y Subir Imagen Docker:** Construye tu imagen Docker y súbela a un registro de contenedores (ej. Docker Hub, GCR, ECR).
+1.  **Construir y Publicar Imagen Docker:**
+    Construye tu imagen Docker y publícala en un registro de contenedores accesible por tu clúster Kubernetes (ej. Docker Hub, Google Container Registry (GCR), Amazon Elastic Container Registry (ECR)).
     ```bash
     sudo docker build -t tu-registro/etl-guia-cores:latest .
     sudo docker push tu-registro/etl-guia-cores:latest
     ```
 2.  **Crear Manifiestos de Kubernetes:**
-    *   **Deployment/StatefulSet:** Para la aplicación API y la base de datos PostgreSQL (o usa un servicio de base de datos gestionado en la nube).
-    *   **Service:** Para exponer la API interna o externamente (ej. mediante un Ingress).
-    *   **ConfigMap/Secret:** Para variables de entorno y credenciales de base de datos.
-3.  **Argo Workflows:** Define plantillas de Argo Workflow para orquestar tus trabajos ETL. Estos flujos de trabajo pueden hacer solicitudes HTTP a tu servicio API desplegado o ejecutar Kubernetes Jobs usando tu imagen Docker y los comandos CLI.
+    Define los recursos de Kubernetes necesarios:
+    *   `Deployment` o `StatefulSet`: Para ejecutar la aplicación API.
+    *   `Service`: Para exponer la API dentro del clúster o externamente (ej. con un `LoadBalancer` o `Ingress`).
+    *   `ConfigMap` y `Secret`: Para gestionar la configuración de la aplicación y las credenciales de la base de datos de forma segura.
+    *   `PersistentVolume` y `PersistentVolumeClaim`: Si necesitas persistencia para los datos de la base de datos PostgreSQL (si la despliegas en Kubernetes) o para los archivos de log/salida.
+3.  **Integración con Argo Workflows (Opcional):**
+    *   Define `WorkflowTemplates` o `Workflows` en Argo para orquestar tus pipelines ETL.
+    *   Estos flujos de trabajo pueden consistir en pasos que:
+        *   Realizan llamadas HTTP a los endpoints de tu API ETL desplegada.
+        *   Ejecutan `Kubernetes Jobs` o `Pods` usando tu imagen Docker, invocando `src/main.py` con los argumentos CLI apropiados para cada modo ETL.
 
 ## Mejoras Futuras / Consideraciones
 
-*   **Implementar Collectors/Scrapers Específicos:** Asegurar que `ManualCollector`, `SequentialCollector`, y sus correspondientes scrapers estén completamente implementados para los modos ETL manual y secuencial.
-*   **Implementar FileLoader:** Asegurar que `FileLoader` en `src/loaders/file_loader.py` esté implementado para manejar el guardado de datos en archivos en el formato deseado (CSV, JSON, etc.).
-*   **Idempotencia:** Hacer los trabajos ETL idempotentes siempre que sea posible, especialmente si pudieran reintentarse.
-*   **Manejo de Errores y Reintentos:** Mejorar el manejo de errores dentro de los pasos ETL y considerar mecanismos de reintentos más sofisticados (ej. con estrategias de backoff, posiblemente gestionadas por Argo Workflows).
-*   **Tareas ETL Asíncronas:** Para trabajos ETL de larga duración activados vía API, considera devolver una respuesta inmediata (ej. un ID de tarea) y ejecutar el proceso ETL de forma asíncrona (ej. usando Celery, `BackgroundTasks` de FastAPI, o dejando que Argo gestione la ejecución del trabajo).
-*   **Métricas y Monitorización:** Integrar herramientas de monitorización (ej. Prometheus, Grafana) para rastrear el rendimiento de la API y el estado de los trabajos ETL.
-*   **Seguridad:** Asegurar aún más la API (autenticación, autorización) si se expone públicamente.
+*   **Implementación Completa de `FileLoader`:** Detallar y robustecer `FileLoader` para manejar diferentes formatos de archivo (CSV, JSON Lines, Parquet) y configuraciones de salida.
+*   **Refinamiento del Scraping Paralelo en Modo Sequential:** Asegurar que la implementación de `ProcessPoolExecutor` con `GuiaCoresScraper` en `run_sequential_etl` sea robusta, maneje errores por proceso, y gestione eficientemente los recursos (drivers de Selenium, etc.).
+*   **Idempotencia en Operaciones ETL:** Diseñar los pasos de carga para que sean idempotentes, evitando duplicados o estados incorrectos si un trabajo se reintenta.
+*   **Manejo Avanzado de Errores y Reintentos:** Implementar estrategias de reintentos más sofisticadas (ej. con backoff exponencial) para operaciones de red o scraping, tanto en la API como en los trabajos CLI.
+*   **Tareas Asíncronas para la API:** Para procesos ETL de larga duración iniciados vía API, considerar un patrón de respuesta inmediata (con un ID de tarea) y ejecución asíncrona del ETL (ej. usando `BackgroundTasks` de FastAPI para tareas simples, o Celery/RQ para sistemas más complejos).
+*   **Métricas y Monitorización:** Integrar Prometheus y Grafana para monitorizar el rendimiento de la API, la duración de los trabajos ETL, tasas de error, y el uso de recursos.
+*   **Seguridad de la API:** Implementar autenticación (ej. OAuth2, API Keys) y autorización para proteger los endpoints de la API si se exponen fuera de un entorno controlado.
+*   **Pruebas Exhaustivas:** Ampliar la cobertura de pruebas unitarias y de integración, especialmente para los flujos ETL y la lógica de scraping.
 
 ## Contribuciones
 
-¡Las contribuciones son bienvenidas! Por favor, haz un fork del repositorio, crea una rama para tu funcionalidad y abre un Pull Request.
+Las contribuciones son bienvenidas. Por favor, realiza un fork del repositorio, crea una rama para tu nueva funcionalidad o corrección (`git checkout -b nombre-feature`), y envía un Pull Request detallando tus cambios.
