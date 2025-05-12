@@ -1,71 +1,39 @@
-from typing import List, Dict, Any
 import json
-import csv
+import logging
+import os
 from pathlib import Path
-from datetime import datetime
-from ..common.base import BaseLoader
-from ..common.config import get_config
+from typing import List, Dict, Any
 
-class FileLoader(BaseLoader):
-    """Cargador para archivos"""
-    
-    def __init__(self, format: str = 'json'):
-        super().__init__('file_loader')
-        self.config = get_config()['loader']['file']
-        self.format = format
-        
-    def load(self, data: List[Dict[str, Any]]) -> None:
-        """
-        Guarda los datos en un archivo
-        
-        Args:
-            data: Lista de diccionarios con datos
-        """
+logger = logging.getLogger(__name__)
+
+class FileLoader:
+    def __init__(self, config: Dict[str, Any]):
+        self.config = config
+        # Ensure data/processed directory exists, configure DATA_OUTPUT_DIR in .env or config
+        self.output_dir = Path(config.get("OUTPUT_DIR", "data/processed"))
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"FileLoader initialized. Output directory: {self.output_dir}")
+
+    def load(self, data: List[Dict[str, Any]], filename_prefix: str = "data") -> None:
         if not data:
+            logger.info("No data to load into file.")
             return
-            
-        # Crear directorio si no existe
-        output_dir = Path(self.config['output_dir'])
-        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create a unique filename, e.g., using a timestamp or a specific identifier from the data
+        # For simplicity, using a generic name here. You might want to make this more specific.
+        output_file = self.output_dir / f"{filename_prefix}_{Path(data[0].get('url', 'generic_data') if data and isinstance(data[0], dict) else 'generic_data').stem}.json"
         
-        # Generar nombre de archivo
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f"businesses_{timestamp}.{self.format}"
-        filepath = output_dir / filename
-        
-        # Guardar datos
-        if self.format == 'json':
-            self._save_json(data, filepath)
-        elif self.format == 'csv':
-            self._save_csv(data, filepath)
-            
-    def _save_json(self, data: List[Dict[str, Any]], filepath: Path) -> None:
-        """
-        Guarda los datos en formato JSON
-        
-        Args:
-            data: Lista de diccionarios con datos
-            filepath: Ruta del archivo
-        """
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-            
-    def _save_csv(self, data: List[Dict[str, Any]], filepath: Path) -> None:
-        """
-        Guarda los datos en formato CSV
-        
-        Args:
-            data: Lista de diccionarios con datos
-            filepath: Ruta del archivo
-        """
-        if not data:
-            return
-            
-        # Obtener columnas
-        columns = list(data[0].keys())
-        
-        # Escribir archivo
-        with open(filepath, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.DictWriter(f, fieldnames=columns)
-            writer.writeheader()
-            writer.writerows(data) 
+        try:
+            with open(output_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=4)
+            logger.info(f"Successfully saved {len(data)} records to {output_file}")
+        except IOError as e:
+            logger.error(f"Error writing data to file {output_file}: {e}", exc_info=True)
+            # Potentially raise the exception or handle it as per your app's error strategy
+            raise
+        except TypeError as e:
+            logger.error(f"Error serializing data to JSON for file {output_file}: {e}", exc_info=True)
+            # Potentially raise the exception
+            raise
+
+    # You might want to add methods for different file formats, e.g., to_csv, etc.
