@@ -60,4 +60,4 @@ services:
       - ui
 
 volumes:
-  postgres_data: 
+  postgres_data:
