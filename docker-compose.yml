@@ -2,49 +2,87 @@ services:
   db:
     image: postgres:15
     environment:
-      POSTGRES_DB: guiacores
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      # Montar el script de inicialización de la base de datos
       - ./src/db/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
       interval: 10s
       timeout: 5s
       retries: 5
 
+  # Servicio para la API FastAPI
+  api:
+    build: .
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      PYTHONUNBUFFERED: 1
+      PYTHONPATH: /app # Asegura que src/ esté en el path
+      # Otras variables de entorno necesarias para los scrapers (ej. Chrome options)
+      CHROME_OPTIONS: --headless --no-sandbox --disable-dev-shm-usage --disable-gpu
+      # Asegúrate de que el .env en la raíz del proyecto contenga las variables necesarias
+      # para la conexión a la base de datos y otras configuraciones.
+    ports:
+      # Mapear el puerto de la API
+      - "8000:8000"
+    volumes:
+      # Montar data y logs para que los loaders y loggers puedan escribir
+      - ./data:/app/data
+      - ./logs:/app/logs
+      # Montar el código fuente
+      - ./src:/app/src
+      # Montar requirements.txt si existe para asegurar que las dependencias se instalen en el build
+      # - ./requirements.txt:/app/requirements.txt # Descomentar si usas requirements.txt
+    depends_on:
+      db:
+        condition: service_healthy
+    # Comando para iniciar la aplicación FastAPI con uvicorn
+    command: uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --reload # --reload es útil para desarrollo
+
+  # Servicio ETL para ejecución CLI (opcional, si quieres mantener esta opción)
   etl:
     build: .
     environment:
       DB_HOST: db
       DB_PORT: 5432
-      DB_NAME: guiacores
-      DB_USER: postgres
-      DB_PASSWORD: postgres
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
       PYTHONUNBUFFERED: 1
       PYTHONPATH: /app
       CHROME_OPTIONS: --headless --no-sandbox --disable-dev-shm-usage --disable-gpu
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
+      - ./src:/app/src # Asegurar que el código fuente esté montado
+      # - ./requirements.txt:/app/requirements.txt # Descomentar si usas requirements.txt
     depends_on:
       db:
         condition: service_healthy
-    command: ${ETL_COMMAND:-python -m src.main bulk}
+    # El comando por defecto puede ser vacío o un shell, ya que se usará 'docker-compose run etl ...'
+    command: /bin/bash # O simplemente dejar vacío para ejecutar commands arbitrarios
     profiles:
-      - etl
+      - etl # Mantener el profile para ejecutar solo este servicio si es necesario
 
+  # Servicio UI Streamlit (opcional, si quieres mantener esta UI)
   ui:
     build: .
     environment:
       DB_HOST: db
       DB_PORT: 5432
-      DB_NAME: guiacores
-      DB_USER: postgres
-      DB_PASSWORD: postgres
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
       PYTHONUNBUFFERED: 1
       PYTHONPATH: /app
     ports:
@@ -52,12 +90,14 @@ services:
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
+      - ./src:/app/src # Asegurar que el código fuente esté montado
+      # - ./requirements.txt:/app/requirements.txt # Descomentar si usas requirements.txt
     depends_on:
       db:
         condition: service_healthy
     command: streamlit run src/ui/app.py
     profiles:
-      - ui
+      - ui # Mantener el profile
 
 volumes:
-  postgres_data: 
+  postgres_data:

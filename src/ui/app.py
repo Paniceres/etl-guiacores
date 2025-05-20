@@ -47,7 +47,11 @@ elif mode == "Secuencial":
 
 else:  # Manual
     st.header("Modo Manual")
-    url = st.text_input("URL", "https://www.guiacores.com.ar/index.php?r=search%2Findex")
+    manual_input_type = st.radio("Selecciona el tipo de entrada:", ["URL", "Archivo"])
+    if manual_input_type == "URL":
+        manual_input_value = st.text_input("URL", "https://www.guiacores.com.ar/index.php?r=search%2Findex")
+    else:
+        manual_input_value = st.text_input("Ruta del archivo", "path/to/your/file.csv") # Asumiendo un archivo
     output_format = st.selectbox("Formato de salida", ["file", "database", "both"])
 
 # Opciones comunes
@@ -76,9 +80,13 @@ if st.button("Ejecutar ETL"):
         ])
     else:  # Manual
         cmd.extend([
-            "manual",
-            "--url", url,
-            "--output", output_format
+            "manual"
+        ])
+        if manual_input_type == "URL":
+            cmd.extend(["--url", manual_input_value])
+        else:
+            # Corrected: Pass --file argument for file input
+            cmd.extend(["--file", manual_input_value])
         ])
     
     # Agregar opciones comunes
@@ -106,6 +114,13 @@ if st.button("Ejecutar ETL"):
                 if output:
                     log_placeholder.text(output.strip())
             
+            # Read stderr after the process finishes
+            stderr_output = process.stderr.read()
+
+            # Mostrar errores si los hay
+            if stderr_output:
+                st.error(f"Error durante la ejecución:\n{stderr_output}")
+
             # Verificar resultado
             if process.returncode == 0:
                 st.success("ETL completado exitosamente!")

@@ -51,6 +51,8 @@ data/processed/csv/*.csv
 !data/raw/json/version_*.json
 !data/processed/json/version_*.json
 !data/processed/csv/version_*.csv
+*.csv
+
 
 # Database
 *.sqlite3
