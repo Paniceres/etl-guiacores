@@ -150,16 +150,16 @@ def run_bulk_etl(start_id: int, end_id: int, output: str = "both") -> Dict[str, 
         logger.error(f"Error en el proceso ETL BULK: {e}", exc_info=True)
         return {"status": "error", "message": str(e)}
 
-def run_manual_etl(url: str, output: str = "both") -> Dict[str, Any]:
+def process_manual_input(url: Optional[str] = None, file: Optional[str] = None, output: str = "both") -> Dict[str, Any]:
     """Ejecuta el proceso ETL para una única URL (modo manual).
 
-    Esta función orquesta el scraping de datos de la URL dada
-    (vía ManualScraper), la transformación de los datos scrapeados (vía
-    BusinessTransformer), y la carga de los datos transformados a los
-    destinos de salida especificados.
+    Esta función orquesta el procesamiento de datos para el modo manual.
+    Puede scrapear una única URL o leer y procesar archivos HTML de un directorio.
+    Luego, transforma los datos procesados y los carga a los destinos de salida especificados.
 
     Args:
-        url: La URL desde la cual extraer datos.
+ url: La URL desde la cual extraer datos. Opcional.\n
+        file: La ruta al directorio que contiene archivos HTML para procesar. Opcional.\n
         output: El destino para los datos de salida.
                 Puede ser "file", "database", o "both". Por defecto es "both".
 
@@ -168,19 +168,44 @@ def run_manual_etl(url: str, output: str = "both") -> Dict[str, Any]:
                         un mensaje, y el número de registros procesados.
     """
     logger.info(f"Iniciando ETL MANUAL. URL: {url}, Output: {output}")
+ scraped_data = []
     try:
         config = get_config()
-        scraper = ManualScraper(config=config)
         transformer = BusinessTransformer(config=config)
         loaders = _get_loaders(output, config)
 
-        logger.info(f"Haciendo scraping de URL (Manual): {url}")
-        scraped_data = scraper.scrape_single_url(url)
+        if url:
+            logger.info(f"Haciendo scraping de URL (Manual): {url}")
+            scraper = ManualScraper(config=config)
+            scraped_data = scraper.scrape_single_url(url)
+            if not scraped_data:
+                 logger.warning(f"No se scrapearon datos para la URL (Manual): {url}")
+                 return {"status": "warning", "message": f"No se scrapearon datos para la URL: {url}", "records_processed": 0}
+            logger.info(f"Scrapeados {len(scraped_data)} registros (Manual)")
 
-        if not scraped_data:
-            logger.warning(f"No se scrapearon datos para la URL (Manual): {url}")
-            return {"status": "warning", "message": f"No se scrapearon datos para la URL: {url}", "records_processed": 0}
-        logger.info(f"Scrapeados {len(scraped_data)} registros (Manual)")
+        elif file:
+            logger.info(f"Procesando archivos HTML desde: {file}")
+            html_files_path = Path(file)
+            if not html_files_path.is_dir():
+                 logger.error(f"Error: La ruta proporcionada no es un directorio: {file}")
+                 return {"status": "error", "message": f"La ruta proporcionada no es un directorio: {file}"}
+
+            for html_file in html_files_path.glob("*.html"):
+                try:
+                    with open(html_file, "r", encoding="utf-8") as f:
+                        html_content = f.read()
+                    # Process the html_content here. This is where you'd need
+                    # to adapt your scraping logic to work with raw HTML.
+                    # For now, let's just store the content.
+                    scraped_data.append({"html_content": html_content}) # You'll need to define a structure for this
+
+                except Exception as e:
+                    logger.error(f"Error al leer o procesar el archivo {html_file}: {e}", exc_info=True)
+
+            if not scraped_data:
+                logger.warning(f"No se encontraron archivos HTML en {file} o no se pudieron procesar.")
+                return {"status": "warning", "message": f"No se encontraron archivos HTML en {file} o no se pudieron procesar.", "records_processed": 0}
+            logger.info(f"Procesados {len(scraped_data)} archivos HTML.")
 
         logger.info("Transformando datos (Manual)")
         transformed_data = transformer.transform(scraped_data)
@@ -323,7 +348,11 @@ if __name__ == "__main__":
 
     # Modo Manual
     manual_parser = subparsers.add_parser("manual", help="Ejecutar ETL para una URL única.")
-    manual_parser.add_argument("--url", type=str, required=True, help="La URL específica a scrapear.")
+    # Create a mutually exclusive group for --url and --file
+    manual_group = manual_parser.add_mutually_exclusive_group(required=True)
+    manual_group.add_argument("--url", type=str, help="La URL específica a scrapear.")
+    manual_group.add_argument("--file", type=str, help="Ruta al archivo de entrada.")
+
     manual_parser.add_argument("--output", type=str, default="both", choices=["file", "database", "both"], help="Destino de salida.")
 
     # Modo Sequential (Secuencial)
@@ -339,7 +368,11 @@ if __name__ == "__main__":
     if args.mode == "bulk":
         run_bulk_etl(args.start_id, args.end_id, args.output)
     elif args.mode == "manual":
-        run_manual_etl(args.url, args.output)
+        # Depending on which argument was provided, call the appropriate function
+        if args.url:
+            process_manual_input(url=args.url, output=args.output)
+        elif args.file: # This case will be handled by the modified process_manual_input
+            process_manual_input(file=args.file, output=args.output)
     elif args.mode == "sequential":
         rubros_list = [r.strip() for r in args.rubros.split(',') if r.strip()] if args.rubros else None
         localidades_list = [l.strip() for l in args.localidades.split(',') if l.strip()] if args.localidades else None
