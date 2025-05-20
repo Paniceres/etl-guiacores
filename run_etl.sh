@@ -17,8 +17,8 @@ show_help() {
     echo "  manual      - Modo manual con argumentos específicos"
     echo
     echo -e "${GREEN}Opciones para modo manual:${NC}"
-    echo "  --start-id N    - ID inicial (requerido para modo manual)"
-    echo "  --end-id N      - ID final (requerido para modo manual)"
+    echo "  --url URL       - URL de la búsqueda avanzada (obligatorio si no se usa --file)"
+    echo "  --file NOMBRE_ARCHIVO - Archivo HTML en /data/html_samples (obligatorio si no se usa --url)"
     echo
     echo -e "${GREEN}Ejemplos:${NC}"
     echo "  ./run_etl.sh bulk"
@@ -37,24 +37,61 @@ fi
 # Procesar el modo y sus argumentos
 case $MODE in
     "bulk")
-        ETL_COMMAND="python -m src.main bulk"
+        BULK_ID_MIN="1"
+        BULK_ID_MAX="99999"
+        while [[ $# -gt 0 ]]; do
+            case $1 in
+                --id_min)
+                    BULK_ID_MIN=$2
+                    shift 2
+                    ;;
+                --id_max)
+                    BULK_ID_MAX=$2
+                    shift 2
+                    ;;
+                *)
+                    echo -e "${RED}Error: Argumento desconocido $1${NC}"
+                    show_help
+                    exit 1
+                    ;;
+            esac
+        done
+        ETL_COMMAND="python -m src.main bulk --id_min=$BULK_ID_MIN --id_max=$BULK_ID_MAX"
         ;;
     "sequential")
-        ETL_COMMAND="python -m src.main sequential"
+        SEQ_RUBRO=""
+        while [[ $# -gt 0 ]]; do
+            case $1 in
+                --rubro)
+                    SEQ_RUBRO=$2
+                    shift 2
+                    ;;
+                *)
+                    echo -e "${RED}Error: Argumento desconocido $1${NC}"
+                    show_help
+                    exit 1
+                    ;;
+            esac
+        done
+        if [ -z "$SEQ_RUBRO" ]; then
+            ETL_COMMAND="python -m src.main sequential"
+        else
+            ETL_COMMAND="python -m src.main sequential --rubro=$SEQ_RUBRO"
+        fi
         ;;
     "manual")
-        START_ID=""
-        END_ID=""
+        MANUAL_URL=""
+        MANUAL_FILE=""
         
         # Procesar argumentos adicionales
         while [[ $# -gt 0 ]]; do
             case $1 in
-                --start-id)
-                    START_ID=$2
+                --url)
+                    MANUAL_URL=$2
                     shift 2
                     ;;
-                --end-id)
-                    END_ID=$2
+                --file)
+                    MANUAL_FILE=$2
                     shift 2
                     ;;
                 *)
@@ -65,14 +102,24 @@ case $MODE in
             esac
         done
         
-        # Verificar argumentos requeridos
-        if [ -z "$START_ID" ] || [ -z "$END_ID" ]; then
-            echo -e "${RED}Error: Modo manual requiere --start-id y --end-id${NC}"
+        # Verificar que se proporciona una URL o un archivo
+        if [ -z "$MANUAL_URL" ] && [ -z "$MANUAL_FILE" ]; then
+            echo -e "${RED}Error: Modo manual requiere --url o --file${NC}"
             show_help
             exit 1
         fi
         
-        ETL_COMMAND="python -m src.main manual --start-id $START_ID --end-id $END_ID"
+        if [ -n "$MANUAL_FILE" ] && [ ! -f "/data/html_samples/$MANUAL_FILE" ]; then
+            echo -e "${RED}Error: Archivo $MANUAL_FILE no encontrado en /data/html_samples${NC}"
+            show_help
+            exit 1
+        fi
+        
+        if [ -n "$MANUAL_URL" ]; then
+            ETL_COMMAND="python -m src.main manual --url $MANUAL_URL"
+        else
+            ETL_COMMAND="python -m src.main manual --file $MANUAL_FILE"
+        fi
         ;;
     *)
         echo -e "${RED}Error: Modo desconocido '$MODE'${NC}"

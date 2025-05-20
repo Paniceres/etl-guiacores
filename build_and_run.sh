@@ -26,7 +26,7 @@ docker buildx inspect etl_guiacores_builder &> /dev/null || docker buildx create
 
 # Usar Buildx para construir la imagen
 echo "Construyendo imagen Docker con Buildx..."
-docker buildx build -t etl-guiacores . --builder etl-guiacores_builder || error "Error al construir la imagen Docker"
+docker buildx build -t etl-guiacores . --builder etl-guiacores_builder --load || error "Error al construir la imagen Docker"
 
 success "Imagen construida exitosamente con Buildx"
 
