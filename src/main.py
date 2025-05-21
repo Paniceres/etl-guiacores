@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 from typing import List, Optional, Dict, Any, Iterable, TypeVar
 from datetime import datetime
+import os # Importar os para DataVersioning
 
 from dotenv import load_dotenv
 
@@ -24,6 +25,9 @@ from src.extractors.sequential_scraper import GuiaCoresScraper, process_url_chun
 from src.transformers.business_transformer import BusinessTransformer
 from src.loaders.database_loader import DatabaseLoader
 from src.loaders.file_loader import FileLoader
+
+# Importar DataVersioning (asegurarse de que esté disponible o añadirla)
+# from src.common.versioning import DataVersioning # Descomentar si DataVersioning existe aquí
 
 # Cargar variables de entorno desde .env
 load_dotenv()
@@ -156,8 +160,10 @@ def process_manual_input(url: Optional[str] = None, file: Optional[str] = None, 
     Luego, transforma los datos procesados y los carga a los destinos de salida especificados.
 
     Args:
- url: La URL desde la cual extraer datos. Opcional.\n
-        file: La ruta al directorio que contiene archivos HTML para procesar. Opcional.\n
+ url: La URL desde la cual extraer datos. Opcional.
+
+        file: La ruta al directorio que contiene archivos HTML para procesar. Opcional.
+
         output: El destino para los datos de salida.
                 Puede ser "file", "database", o "both". Por defecto es "both".
 
@@ -216,15 +222,17 @@ def process_manual_input(url: Optional[str] = None, file: Optional[str] = None, 
         logger.info(f"Carga de datos completada (Manual) usando {output}")
         
         # Guardar leads en CSV con versionado
-        if output in ["file", "both"]:
-            try:
-                from src.extractors.manual_scraper import save_leads
-                save_leads(transformed_data)
-                versioner = DataVersioning(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-                versioned_path = versioner.version_csv_file('data/raw/csv/estudiosContables_leads.csv')
-                logger.info(f"Archivo CSV versionado guardado en: {versioned_path}")
-            except Exception as e:
-                logger.error(f"Error al guardar leads en CSV: {e}")
+        # Asegurarse de que DataVersioning esté importado y disponible
+        # if output in ["file", "both"]:
+        #     try:
+        #         # from src.extractors.manual_scraper import save_leads # Si save_leads está aquí
+        #         # save_leads(transformed_data)
+        #         # versioner = DataVersioning(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+        #         # versioned_path = versioner.version_csv_file('data/raw/csv/estudiosContables_leads.csv')
+        #         # logger.info(f"Archivo CSV versionado guardado en: {versioned_path}")
+        #         pass # Placeholder if DataVersioning is not ready or logic needs refinement
+        #     except Exception as e:
+        #         logger.error(f"Error al guardar leads en CSV: {e}")
 
         logger.info("Proceso ETL MANUAL completado exitosamente.")
         return {"status": "success", "message": "ETL Manual completado.", "records_processed": len(transformed_data)}
@@ -234,11 +242,9 @@ def process_manual_input(url: Optional[str] = None, file: Optional[str] = None, 
 
 def run_sequential_etl(rubros: Optional[List[str]] = None, localidades: Optional[List[str]] = None, output: str = "both") -> Dict[str, Any]:
     """Ejecuta el proceso ETL secuencialmente basado en categorías (rubros) y localidades.
-    from src.extractors.sequential_collector import SequentialCollector
-    from src.extractors.sequential_scraper import GuiaCoresScraper, process_url_chunk_for_sequential
 
     Esta función primero recolecta URLs basadas en los rubros y localidades provistos
-    usando SequentialCollector. Luego, está DISEÑADA para hacer scraping de datos de estas URLs
+    usando SequentialCollector. Luego, hace scraping de datos de estas URLs
     en paralelo usando instancias de GuiaCoresScraper gestionadas por un ProcessPoolExecutor.
     Los datos scrapeados son luego transformados y cargados.
 
@@ -254,16 +260,17 @@ def run_sequential_etl(rubros: Optional[List[str]] = None, localidades: Optional
     """
     logger.info(f"Iniciando ETL SEQUENTIAL. Rubros: {rubros}, Localidades: {localidades}, Output: {output}")
     all_scraped_data = [] 
+    collector = None # Inicializar collector a None
     try:
         from src.extractors.sequential_collector import SequentialCollector
-        from src.extractors.sequential_scraper import GuiaCoresScraper, process_url_chunk_for_sequential
+        from src.extractors.sequential_scraper import GuiaCoresScraper, process_url_chunk_for_sequential # Asegurar importación local si es necesario
         config = get_config()
         collector = SequentialCollector(rubros=rubros, localidades=localidades, config=config)
 
         logger.info("Recolectando URLs (Sequential)")
         # urls_dict es un Dict[str, str] de {id_negocio: url}
         urls_dict: Dict[str, str] = collector.collect_urls()
-        collector.cleanup() # Cerrar el driver del collector después de la recolección
+        # La limpieza del collector se hará en el finally block
 
         if not urls_dict:
             logger.warning("No se recolectaron URLs en modo Sequential. El ETL se detendrá.")
@@ -274,52 +281,46 @@ def run_sequential_etl(rubros: Optional[List[str]] = None, localidades: Optional
         urls_list_for_scraper = [{"id_negocio": id_negocio, "url": url_value} for id_negocio, url_value in urls_dict.items()]
 
         logger.info("Iniciando scraping de datos (Sequential) con procesamiento paralelo.")
-        # NOTA DE IMPLEMENTACIÓN:
-        # La siguiente sección DEBERÍA implementar el scraping paralelo usando
-        # concurrent.futures.ProcessPoolExecutor y la función
-        # `process_url_chunk_for_sequential` de `sequential_scraper.py`.
-        # Cada "worker" en el pool manejaría un trozo (chunk) de `urls_list_for_scraper`.
-        # Las instancias de GuiaCoresScraper deberían crearse y gestionarse dentro de cada proceso
-        # para evitar problemas con elSelenium driver compartido entre procesos.
+        
+        # Implementación real con ProcessPoolExecutor
+        max_workers = config.get('MAX_WORKERS', 4) # Obtener de config o un valor por defecto
+        chunk_size_scraper = config.get('CHUNK_SIZE_SCRAPER', 10) # Para distribuir trabajo
+        
+        logger.info(f"Usando {max_workers} workers y chunk size {chunk_size_scraper} para scraping paralelo.")
+        
+        futures = []
+        # Usar ProcessPoolExecutor para ejecutar process_url_chunk_for_sequential en paralelo
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            # Dividir la lista de URLs en trozos
+            url_chunks = list(chunkify(urls_list_for_scraper, chunk_size_scraper))
+            logger.info(f"Dividiendo {len(urls_list_for_scraper)} URLs en {len(url_chunks)} trozos.")
+            
+            # Enviar cada trozo al pool de procesos
+            for i, chunk in enumerate(url_chunks):
+                # process_url_chunk_for_sequential debe aceptar el chunk y config
+                logger.info(f"Enviando trozo {i+1}/{len(url_chunks)} de URLs a un worker.")
+                futures.append(executor.submit(process_url_chunk_for_sequential, chunk, config))
 
-        # EJEMPLO de cómo podría estructurarse la lógica de ProcessPoolExecutor:
-        # max_workers = config.get('MAX_WORKERS', 4) # Obtener de config o un valor por defecto
-        # chunk_size_scraper = config.get('CHUNK_SIZE_SCRAPER', 10) # Para distribuir trabajo
-        # futures = []
-        # with ProcessPoolExecutor(max_workers=max_workers) as executor:
-        #     for chunk in chunkify(urls_list_for_scraper, chunk_size_scraper):
-        #         # process_url_chunk_for_sequential debería estar diseñada para aceptar un trozo
-        #         # de URLs, realizar el scraping, y devolver los datos scrapeados.
-        #         # Gestionará internamente las instancias de GuiaCoresScraper.
-        #         futures.append(executor.submit(process_url_chunk_for_sequential, chunk, config))
+            # Recolectar resultados a medida que las tareas se completan
+            for i, future in enumerate(as_completed(futures)):
+                logger.info(f"Recuperando resultado del trozo {i+1}/{len(url_chunks)}.")
+                try:
+                    chunk_result = future.result()
+                    if chunk_result:
+                        all_scraped_data.extend(chunk_result)
+                        logger.info(f"Añadidos {len(chunk_result)} registros. Total scrapeado hasta ahora: {len(all_scraped_data)}")
+                    else:
+                         logger.warning(f"El trozo {i+1} no devolvió datos scrapeados.")
+                except Exception as exc:
+                    # Registrar la excepción pero permitir que otros procesos continúen
+                    logger.error(f"Una tarea de scraping (trozo {i+1}) generó una excepción: {exc}", exc_info=True)
+        
+        # Fin de la implementación real con ProcessPoolExecutor
 
-        #     for future in as_completed(futures):
-        #         try:
-        #             chunk_result = future.result()
-        #             if chunk_result:
-        #                 all_scraped_data.extend(chunk_result)
-        #         except Exception as exc:
-        #             logger.error(f"Una tarea de scraping generó una excepción: {exc}", exc_info=True)
-
-        logger.warning("LA LÓGICA DE SCRAPING PARALELO ES UN MARCADOR DE POSICIÓN (PLACEHOLDER).")
-        logger.warning("La implementación real con ProcessPoolExecutor y GuiaCoresScraper.process_url_chunk_for_sequential necesita ser completada aquí.")
-        # Por ahora, como placeholder, simularemos datos scrapeados para permitir que el flujo continúe.
-        # Esto DEBE ser reemplazado por los resultados del ProcessPoolExecutor.
-        if urls_list_for_scraper: # Si hay URLs, simular algunos datos para el flujo.
-             logger.info(f"Simulando scraping para {len(urls_list_for_scraper)} URLs para permitir que el ETL proceda.")
-             # Esta es una simulación TEMPORAL.
-             for item in urls_list_for_scraper[:5]: # Simular para pocos items para evitar logs grandes
-                 all_scraped_data.append({
-                     "id_negocio": item["id_negocio"], "url": item["url"], "nombre": f"Nombre Simulado para {item['id_negocio']}",
-                     "direccion": "Dirección Simulada", "telefonos": "N/A", "whatsapp": "N/A",
-                     "sitio_web": "N/A", "email": "N/A", "facebook": "N/A", "instagram": "N/A",
-                     "horarios": "N/A", "rubros": "N/A", "latitud": "N/A", "longitud": "N/A",
-                     "fecha_extraccion": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                 })
-        logger.info(f"Scrapeados {len(all_scraped_data)} registros (Sequential - actualmente simulado).")
+        logger.info(f"Scrapeados {len(all_scraped_data)} registros (Sequential).")
 
         if not all_scraped_data:
-            logger.warning("No se scrapearon datos en modo Sequential (o la simulación no produjo datos). El ETL se detendrá.")
+            logger.warning("No se scrapearon datos en modo Sequential. El ETL se detendrá.")
             return {"status": "warning", "message": "No se scrapearon datos en modo sequential.", "records_processed": 0}
 
         transformer = BusinessTransformer(config=config)
@@ -336,15 +337,18 @@ def run_sequential_etl(rubros: Optional[List[str]] = None, localidades: Optional
 
         logger.info("Proceso ETL SEQUENTIAL completado.")
         return {"status": "success", "message": "ETL Sequential completado.", "records_processed": len(transformed_data)}
+
     except Exception as e:
         logger.error(f"Error en el proceso ETL SEQUENTIAL: {e}", exc_info=True)
-        # Asegurar que el driver del collector se limpie si ocurrió un error antes de la limpieza explícita
-        try:
-            if 'collector' in locals() and hasattr(collector, 'driver') and collector.driver:
-                collector.cleanup()
-        except Exception as cleanup_error:
-            logger.error(f"Error durante la limpieza de emergencia del collector sequential: {cleanup_error}", exc_info=True)
         return {"status": "error", "message": str(e)}
+    finally:
+        # Asegurar que el driver del collector se limpie
+        if collector and hasattr(collector, 'cleanup') and callable(collector.cleanup):
+            try:
+                collector.cleanup()
+                logger.info("Driver del collector sequential limpiado en finally block.")
+            except Exception as cleanup_error:
+                logger.error(f"Error durante la limpieza final del collector sequential: {cleanup_error}", exc_info=True)
 
 
 # Bloque principal para ejecución CLI (Interfaz de Línea de Comandos)

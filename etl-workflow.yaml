@@ -1,0 +1,94 @@
+apiVersion: argoproj.io/v1a1
+kind: Workflow
+metadata:
+  generateName: etl-pipeline-
+spec:
+  entrypoint: etl-sequence
+  volumeClaimTemplates:
+  - metadata:
+      name: workdir # Nombre del PersistentVolumeClaim template
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 1Gi # Tamaño del volumen solicitado
+
+  templates:
+  - name: etl-sequence
+    steps:
+    - - name: extract-step
+        template: extract-template
+    - - name: transform-step
+        template: transform-template
+    - - name: load-step
+        template: load-template
+
+  - name: extract-template
+    container:
+      # Usar la imagen personalizada para la etapa de extracción
+      image: etl-extractor:latest # <--- Usar imagen personalizada
+      command: ["python"]
+      args: [
+        "-u", # Unbuffered output
+        "/app/src/extractors/run_extraction.py", # Path al script dentro del contenedor
+        # Argumentos para el script de extracción (ej. rubros, localidades)
+        # Puedes parametrizar esto en Argo Workflow si necesitas pasar estos valores dinámicamente
+        # "--rubros", "restaurantes,hoteles",
+        # "--localidades", "ciudad-a,ciudad-b",
+        "--output_path", "/workspace/data/extracted/sequential_raw_data.json" # Ruta de salida en el volumen compartido
+      ]
+      workingDir: /app # Directorio de trabajo donde se copia el código
+      volumeMounts:
+        - name: workdir
+          mountPath: /workspace # Montar el volumen para escribir los datos extraídos
+      # outputs:
+      #   parameters:
+      #     - name: raw-data-path
+      #       valueFrom:
+      #         path: /workspace/data/extracted/sequential_raw_data.json
+
+  - name: transform-template
+    container:
+      # Usar la imagen personalizada para la etapa de transformación
+      image: etl-transformer:latest # <--- Usar imagen personalizada
+      command: ["python"]
+      args: [
+        "-u", # Unbuffered output
+        "/app/src/transformers/run_transformation.py", # Path al script dentro del contenedor
+        "--input_path", "/workspace/data/extracted/sequential_raw_data.json", # Ruta de entrada en el volumen
+        "--output_path", "/workspace/data/transformed/sequential_transformed_data.json" # Ruta de salida en el volumen
+      ]
+      workingDir: /app # Directorio de trabajo
+      volumeMounts:
+        - name: workdir
+          mountPath: /workspace # Montar el volumen para leer datos de extracción y escribir datos transformados
+      # inputs:
+      #   parameters:
+      #     - name: raw-data-path
+      #       from: "{{steps.extract-step.outputs.parameters.raw-data-path}}"
+      # outputs:
+      #   parameters:
+      #     - name: transformed-data-path
+      #       valueFrom:
+      #         path: /workspace/data/transformed/sequential_transformed_data.json
+
+  - name: load-template
+    container:
+      # Usar la imagen personalizada para la etapa de carga
+      image: etl-loader:latest # <--- Usar imagen personalizada
+      command: ["python"]
+      args: [
+        "-u", # Unbuffered output
+        "/app/src/loaders/run_loading.py", # Path al script dentro del contenedor
+        "--input_path", "/workspace/data/transformed/sequential_transformed_data.json", # Ruta de entrada en el volumen
+        # Argumentos para el script de carga (ej. output_type)
+        # "--output_type", "database"
+      ]
+      workingDir: /app # Directorio de trabajo
+      volumeMounts:
+        - name: workdir
+          mountPath: /workspace # Montar el volumen para leer datos transformados
+      # inputs:
+      #   parameters:
+      #     - name: transformed-data-path
+      #       from: "{{steps.transform-step.outputs.parameters.transformed-data-path}}"
