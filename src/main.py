@@ -7,8 +7,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 # Ajustar el path para permitir imports relativos cuando se ejecuta como script.
-current_dir = Path(__file__).parent
-sys.path.append(str(current_dir.parent))
+# No es necesario agregar el path manualmente si ya está en PYTHONPATH
 
 # Importación para procesamiento paralelo (previsto para run_sequential_etl)
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -17,7 +16,6 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from src.common.config import get_config
 from src.extractors.bulk_collector import BulkCollector
 from src.extractors.bulk_scraper import BulkScraper
-from src.extractors.manual_scraper import ManualScraper
 from src.extractors.sequential_collector import SequentialCollector
 # Se espera que GuiaCoresScraper y su función process_url_chunk_for_sequential
 # sean utilizados por ProcessPoolExecutor dentro de run_sequential_etl, según la arquitectura discutida.
@@ -168,8 +166,9 @@ def process_manual_input(url: Optional[str] = None, file: Optional[str] = None, 
                         un mensaje, y el número de registros procesados.
     """
     logger.info(f"Iniciando ETL MANUAL. URL: {url}, Output: {output}")
- scraped_data = []
+    scraped_data = []
     try:
+        from src.extractors.manual_scraper import ManualScraper
         config = get_config()
         transformer = BusinessTransformer(config=config)
         loaders = _get_loaders(output, config)
@@ -215,6 +214,17 @@ def process_manual_input(url: Optional[str] = None, file: Optional[str] = None, 
         for loader in loaders:
             loader.load(transformed_data)
         logger.info(f"Carga de datos completada (Manual) usando {output}")
+        
+        # Guardar leads en CSV con versionado
+        if output in ["file", "both"]:
+            try:
+                from src.extractors.manual_scraper import save_leads
+                save_leads(transformed_data)
+                versioner = DataVersioning(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+                versioned_path = versioner.version_csv_file('data/raw/csv/estudiosContables_leads.csv')
+                logger.info(f"Archivo CSV versionado guardado en: {versioned_path}")
+            except Exception as e:
+                logger.error(f"Error al guardar leads en CSV: {e}")
 
         logger.info("Proceso ETL MANUAL completado exitosamente.")
         return {"status": "success", "message": "ETL Manual completado.", "records_processed": len(transformed_data)}
@@ -224,6 +234,8 @@ def process_manual_input(url: Optional[str] = None, file: Optional[str] = None, 
 
 def run_sequential_etl(rubros: Optional[List[str]] = None, localidades: Optional[List[str]] = None, output: str = "both") -> Dict[str, Any]:
     """Ejecuta el proceso ETL secuencialmente basado en categorías (rubros) y localidades.
+    from src.extractors.sequential_collector import SequentialCollector
+    from src.extractors.sequential_scraper import GuiaCoresScraper, process_url_chunk_for_sequential
 
     Esta función primero recolecta URLs basadas en los rubros y localidades provistos
     usando SequentialCollector. Luego, está DISEÑADA para hacer scraping de datos de estas URLs
@@ -241,8 +253,10 @@ def run_sequential_etl(rubros: Optional[List[str]] = None, localidades: Optional
                         un mensaje, y el número de registros procesados.
     """
     logger.info(f"Iniciando ETL SEQUENTIAL. Rubros: {rubros}, Localidades: {localidades}, Output: {output}")
-    all_scraped_data = [] # Lista para acumular todos los datos scrapeados
+    all_scraped_data = [] 
     try:
+        from src.extractors.sequential_collector import SequentialCollector
+        from src.extractors.sequential_scraper import GuiaCoresScraper, process_url_chunk_for_sequential
         config = get_config()
         collector = SequentialCollector(rubros=rubros, localidades=localidades, config=config)
 
@@ -365,16 +379,18 @@ if __name__ == "__main__":
 
     # setup_logging_if_not_configured() ya se llama a nivel de módulo, asegurando logs para CLI.
 
-    if args.mode == "bulk":
-        run_bulk_etl(args.start_id, args.end_id, args.output)
-    elif args.mode == "manual":
-        # Depending on which argument was provided, call the appropriate function
-        if args.url:
-            process_manual_input(url=args.url, output=args.output)
-        elif args.file: # This case will be handled by the modified process_manual_input
-            process_manual_input(file=args.file, output=args.output)
-    elif args.mode == "sequential":
-        rubros_list = [r.strip() for r in args.rubros.split(',') if r.strip()] if args.rubros else None
-        localidades_list = [l.strip() for l in args.localidades.split(',') if l.strip()] if args.localidades else None
-        run_sequential_etl(rubros_list, localidades_list, args.output)
-    # No se necesita 'else' aquí ya que subparsers es 'required=True', argparse maneja el error si no se da un modo.
+    try:
+        if args.mode == "bulk":
+            run_bulk_etl(args.start_id, args.end_id, args.output)
+        elif args.mode == "manual":
+            # Depending on which argument was provided, call the appropriate function
+            if args.url:
+                process_manual_input(url=args.url, output=args.output)
+            elif args.file: 
+                process_manual_input(file=args.file, output=args.output)
+        elif args.mode == "sequential":
+            rubros_list = [r.strip() for r in args.rubros.split(',') if r.strip()] if args.rubros else None
+            localidades_list = [l.strip() for l in args.localidades.split(',') if l.strip()] if args.localidades else None
+            run_sequential_etl(rubros_list, localidades_list, args.output)
+    except Exception as e:
+        logger.error(f"Error en la ejecución del ETL: {e}", exc_info=True)

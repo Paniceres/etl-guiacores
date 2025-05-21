@@ -22,11 +22,11 @@ if [ ! -f "Dockerfile" ]; then
 fi
 
 # Inicializar Buildx si no existe un builder
-docker buildx inspect etl_guiacores_builder &> /dev/null || docker buildx create --name etl-guiacores_builder
+docker buildx create --name etl-guiacores-builder
 
 # Usar Buildx para construir la imagen
 echo "Construyendo imagen Docker con Buildx..."
-docker buildx build -t etl-guiacores . --builder etl-guiacores_builder --load || error "Error al construir la imagen Docker"
+docker buildx build --tag etl-guiacores --builder etl-guiacores_builder . --load
 
 success "Imagen construida exitosamente con Buildx"
 

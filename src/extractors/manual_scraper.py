@@ -397,6 +397,22 @@ def scrape_from_local_html_directory(directory_path):
 if __name__ == "__main__":
     scrape_from_local_html_directory(LOCAL_HTML_DIRECTORY_PATH)
 
+class ManualScraper:
+    def __init__(self, config: Dict[str, Any]):
+        self.config = config
+        
+    def scrape_single_url(self, url: str) -> List[Dict[str, Any]]:
+        try:
+            response = requests.get(url)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.content, 'html.parser')
+            data = parse_detail_page(soup)
+            data['URL'] = url
+            return [data]
+        except Exception as e:
+            logger.error(f"Error scraping URL {url}: {e}")
+            return []
+
 def save_leads(leads: List[Dict[str, Any]], output_file: str = 'data/raw/csv/estudiosContables_leads.csv') -> None:
     """
     Guarda los leads en un archivo CSV.
@@ -409,4 +425,10 @@ def save_leads(leads: List[Dict[str, Any]], output_file: str = 'data/raw/csv/est
         # Crear directorio de salida si no existe
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
         
-        # ... (resto del código sin cambios)
+        # Convertir a DataFrame y guardar en CSV
+        df = pd.DataFrame(leads)
+        df.to_csv(output_file, index=False, encoding='utf-8')
+        logger.info(f"Leads guardados exitosamente en {output_file}")
+        
+    except Exception as e:
+        logger.error(f"Error al guardar leads en {output_file}: {e}")

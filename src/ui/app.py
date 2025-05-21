@@ -36,7 +36,7 @@ if mode == "Bulk":
         start_id = st.number_input("ID Inicial", min_value=1, value=1)
     with col2:
         end_id = st.number_input("ID Final", min_value=start_id, value=1000)
-    
+
     chunk_size = st.slider("Tamaño de Chunk", min_value=10, max_value=1000, value=100)
     num_workers = st.slider("Número de Workers", min_value=1, max_value=8, value=4)
 
@@ -63,7 +63,7 @@ log_level = st.selectbox("Nivel de Log", ["INFO", "DEBUG", "WARNING", "ERROR"])
 if st.button("Ejecutar ETL"):
     # Construir comando según el modo
     cmd = ["python", "-m", "src.main"]
-    
+
     if mode == "Bulk":
         cmd.extend([
             "bulk",
@@ -79,22 +79,22 @@ if st.button("Ejecutar ETL"):
             "--delay", str(delay)
         ])
     else:  # Manual
-        cmd.extend([
-            "manual"
-        ])
+        cmd.extend(["manual"])
         if manual_input_type == "URL":
             cmd.extend(["--url", manual_input_value])
         else:
-            # Corrected: Pass --file argument for file input
             cmd.extend(["--file", manual_input_value])
+        cmd.extend([
+            "--output-format", output_format
         ])
-    
+
+
     # Agregar opciones comunes
     cmd.extend([
         "--output-dir", output_dir,
         "--log-level", log_level
     ])
-    
+
     # Ejecutar comando
     with st.spinner("Ejecutando ETL..."):
         try:
@@ -104,7 +104,7 @@ if st.button("Ejecutar ETL"):
                 stderr=subprocess.PIPE,
                 universal_newlines=True
             )
-            
+
             # Mostrar logs en tiempo real
             log_placeholder = st.empty()
             while True:
@@ -113,7 +113,7 @@ if st.button("Ejecutar ETL"):
                     break
                 if output:
                     log_placeholder.text(output.strip())
-            
+
             # Read stderr after the process finishes
             stderr_output = process.stderr.read()
 
@@ -126,7 +126,7 @@ if st.button("Ejecutar ETL"):
                 st.success("ETL completado exitosamente!")
             else:
                 st.error("Error en la ejecución del ETL")
-                
+
         except Exception as e:
             st.error(f"Error al ejecutar el comando: {str(e)}")
 
@@ -154,13 +154,13 @@ with tab2:
             user=os.getenv("DB_USER", "postgres"),
             password=os.getenv("DB_PASSWORD", "postgres")
         )
-        
+
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             # Total de registros
             cur.execute("SELECT COUNT(*) as total FROM businesses")
             total = cur.fetchone()["total"]
             st.metric("Total de negocios", total)
-            
+
             # Registros por día
             cur.execute("""
                 SELECT DATE(fecha_extraccion) as fecha, COUNT(*) as cantidad
@@ -172,7 +172,7 @@ with tab2:
             daily_stats = pd.DataFrame(cur.fetchall())
             if not daily_stats.empty:
                 st.line_chart(daily_stats.set_index("fecha")["cantidad"])
-            
+
             # Últimos registros
             cur.execute("""
                 SELECT nombre, direccion, fecha_extraccion
@@ -183,9 +183,9 @@ with tab2:
             recent = pd.DataFrame(cur.fetchall())
             if not recent.empty:
                 st.dataframe(recent)
-                
+
     except Exception as e:
         st.error(f"Error al conectar con la base de datos: {str(e)}")
     finally:
         if 'conn' in locals():
-            conn.close() 
+            conn.close()
