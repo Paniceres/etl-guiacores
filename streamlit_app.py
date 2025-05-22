@@ -1,7 +1,7 @@
 import streamlit as st
 import sys
 import os
-from pathlib import Path # Import Path here
+from pathlib import Path
 
 # Add the parent directory of src to the sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
