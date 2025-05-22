@@ -1,13 +1,12 @@
 import streamlit as st
 import sys
 import os
+from pathlib import Path # Import Path here
 
 # Add the parent directory of src to the sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from src.main import run_bulk_etl, process_manual_input, run_sequential_etl
-
-from pathlib import Path
 
 st.title("ETL Pipeline GUI")
 st.write("Select an ETL mode and provide the necessary parameters.")
@@ -99,4 +98,3 @@ if output_dir.exists():
         st.write("No CSV files generated yet.")
 else:
     st.write("The data/processed directory does not exist yet.")
-
