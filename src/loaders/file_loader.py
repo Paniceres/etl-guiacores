@@ -1,8 +1,8 @@
-import json
 import logging
 import os
 from pathlib import Path
 from typing import List, Dict, Any
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -19,21 +19,21 @@ class FileLoader:
             logger.info("No data to load into file.")
             return
 
-        # Create a unique filename, e.g., using a timestamp or a specific identifier from the data
-        # For simplicity, using a generic name here. You might want to make this more specific.
-        output_file = self.output_dir / f"{filename_prefix}_{Path(data[0].get('url', 'generic_data') if data and isinstance(data[0], dict) else 'generic_data').stem}.json"
-
         try:
-            with open(output_file, 'w', encoding='utf-8') as f:
-                json.dump(data, f, ensure_ascii=False, indent=4)
-            logger.info(f"Successfully saved {len(data)} records to {output_file}")
-        except IOError as e:
-            logger.error(f"Error writing data to file {output_file}: {e}", exc_info=True)
-            # Potentially raise the exception or handle it as per your app's error strategy
-            raise
-        except TypeError as e:
-            logger.error(f"Error serializing data to JSON for file {output_file}: {e}", exc_info=True)
-            # Potentially raise the exception
+            # Convert list of dictionaries to pandas DataFrame
+            df = pd.DataFrame(data)
+
+            # Create a unique filename, e.g., using a timestamp or a specific identifier
+            # For simplicity, using a generic name with timestamp.
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_file = self.output_dir / f"{filename_prefix}_{timestamp}.csv"
+
+            # Save DataFrame to CSV
+            df.to_csv(output_file, index=False, encoding='utf-8')
+
+            logger.info(f"Successfully saved {len(data)} records to {output_file} as CSV")
+        except Exception as e:
+            logger.error(f"Error writing data to CSV file: {e}", exc_info=True)
             raise
 
-    # You might want to add methods for different file formats, e.g., to_csv, etc.
+from datetime import datetime # Import datetime here since it's used in the load method

@@ -3,38 +3,25 @@ import sys
 from pathlib import Path
 from typing import List, Optional, Dict, Any, Iterable, TypeVar
 from datetime import datetime
-import os # Importar os para DataVersioning
+import os
 
 from dotenv import load_dotenv
 
-# Ajustar el path para permitir imports relativos cuando se ejecuta como script.
-# No es necesario agregar el path manualmente si ya está en PYTHONPATH
-
-# Importación para procesamiento paralelo (previsto para run_sequential_etl)
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
-# Importar componentes del sistema ETL
 from src.common.config import get_config
 from src.extractors.bulk_collector import BulkCollector
 from src.extractors.bulk_scraper import BulkScraper
 from src.extractors.sequential_collector import SequentialCollector
-# Se espera que GuiaCoresScraper y su función process_url_chunk_for_sequential
-# sean utilizados por ProcessPoolExecutor dentro de run_sequential_etl, según la arquitectura discutida.
 from src.extractors.sequential_scraper import GuiaCoresScraper, process_url_chunk_for_sequential
 
 from src.transformers.business_transformer import BusinessTransformer
-from src.loaders.database_loader import DatabaseLoader
 from src.loaders.file_loader import FileLoader
 
-# Importar DataVersioning (asegurarse de que esté disponible o añadirla)
-# from src.common.versioning import DataVersioning # Descomentar si DataVersioning existe aquí
-
-# Cargar variables de entorno desde .env
 load_dotenv()
 
-T = TypeVar('T') # Tipo genérico para la función chunkify
+T = TypeVar('T')
 
-# Instancia global del logger
 logger = logging.getLogger(__name__)
 
 def setup_logging_if_not_configured():
@@ -44,17 +31,16 @@ def setup_logging_if_not_configured():
     se ejecute directamente o se importe como un módulo. Los logs se dirigen
     a 'data/logs/etl_api.log' y a la salida estándar (stdout).
     """
-    if not logger.handlers:  # Verificar si ya se han añadido manejadores
+    if not logger.handlers:
         logging.basicConfig(
             level=logging.INFO,
             format='%(asctime)s - %(levelname)s - %(module)s - %(funcName)s - %(message)s',
             handlers=[
-                logging.FileHandler('data/logs/etl_api.log'),  # Log para ETLs iniciados por API
+                logging.FileHandler('data/logs/etl_api.log'),
                 logging.StreamHandler()
             ]
         )
 
-# Configurar el logging al momento de importar el módulo
 setup_logging_if_not_configured()
 
 def chunkify(data: List[T], chunk_size: int) -> Iterable[List[T]]:
@@ -75,39 +61,30 @@ def _get_loaders(output_type: str, config: dict) -> List[Any]:
 
     Args:
         output_type: Una cadena que indica la salida deseada.
-                     Acepta "database", "file", o "both".
+                     Actualmente solo acepta "file".
         config: El diccionario de configuración de la aplicación.
 
     Returns:
-        List[Any]: Una lista conteniendo objetos 'loader' instanciados (DatabaseLoader, FileLoader).
+        List[Any]: Una lista conteniendo objetos 'loader' instanciados (FileLoader).
 
     Raises:
-        ValueError: Si output_type no es uno de los valores aceptados.
+        ValueError: Si output_type no es "file".
     """
     loaders = []
-    if output_type in ["database", "both"]:
-        loaders.append(DatabaseLoader(config=config))
-    if output_type in ["file", "both"]:
-        # Asumiendo que FileLoader está implementado y acepta config si es necesario
+    if output_type == "file":
         loaders.append(FileLoader(config=config))
-
-    if not loaders:
-        raise ValueError(f"Tipo de salida inválido: {output_type}. Debe ser 'database', 'file', o 'both'.")
+    else:
+        raise ValueError(f"Tipo de salida inválido: {output_type}. Debe ser 'file'.")
     return loaders
 
-def run_bulk_etl(start_id: int, end_id: int, output: str = "both") -> Dict[str, Any]:
+def run_bulk_etl(start_id: int, end_id: int, output: str = "file") -> Dict[str, Any]:
     """Ejecuta el proceso ETL en modo 'bulk' (masivo) para un rango de IDs dado.
-
-    Esta función orquesta la recolección de URLs (vía BulkCollector),
-    el scraping de datos de esas URLs (vía BulkScraper), la transformación
-    de los datos scrapeados (vía BusinessTransformer), y la carga de los
-    datos transformados a los destinos de salida especificados.
 
     Args:
         start_id: El ID inicial para el rango de procesamiento masivo.
         end_id: El ID final para el rango de procesamiento masivo.
         output: El destino para los datos de salida.
-                Puede ser "file", "database", o "both". Por defecto es "both".
+                Actualmente solo acepta "file". Por defecto es "file".
 
     Returns:
         Dict[str, Any]: Un diccionario conteniendo el estado del proceso ETL,
@@ -152,12 +129,8 @@ def run_bulk_etl(start_id: int, end_id: int, output: str = "both") -> Dict[str, 
         logger.error(f"Error en el proceso ETL BULK: {e}", exc_info=True)
         return {"status": "error", "message": str(e)}
 
-def process_manual_input(url: Optional[str] = None, file: Optional[str] = None, output: str = "both") -> Dict[str, Any]:
-    """Ejecuta el proceso ETL para una única URL (modo manual).
-
-    Esta función orquesta el procesamiento de datos para el modo manual.
-    Puede scrapear una única URL o leer y procesar archivos HTML de un directorio.
-    Luego, transforma los datos procesados y los carga a los destinos de salida especificados.
+def process_manual_input(url: Optional[str] = None, file: Optional[str] = None, output: str = "file") -> Dict[str, Any]:
+    """Ejecuta el proceso ETL para una única URL o archivos HTML (modo manual).
 
     Args:
  url: La URL desde la cual extraer datos. Opcional.
@@ -165,13 +138,13 @@ def process_manual_input(url: Optional[str] = None, file: Optional[str] = None, 
         file: La ruta al directorio que contiene archivos HTML para procesar. Opcional.
 
         output: El destino para los datos de salida.
-                Puede ser "file", "database", o "both". Por defecto es "both".
+                Actualmente solo acepta "file". Por defecto es "file".
 
     Returns:
         Dict[str, Any]: Un diccionario conteniendo el estado del proceso ETL,
                         un mensaje, y el número de registros procesados.
     """
-    logger.info(f"Iniciando ETL MANUAL. URL: {url}, Output: {output}")
+    logger.info(f"Iniciando ETL MANUAL. URL: {url}, File: {file}, Output: {output}")
     scraped_data = []
     try:
         from src.extractors.manual_scraper import ManualScraper
@@ -220,19 +193,6 @@ def process_manual_input(url: Optional[str] = None, file: Optional[str] = None, 
         for loader in loaders:
             loader.load(transformed_data)
         logger.info(f"Carga de datos completada (Manual) usando {output}")
-        
-        # Guardar leads en CSV con versionado
-        # Asegurarse de que DataVersioning esté importado y disponible
-        # if output in ["file", "both"]:
-        #     try:
-        #         # from src.extractors.manual_scraper import save_leads # Si save_leads está aquí
-        #         # save_leads(transformed_data)
-        #         # versioner = DataVersioning(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-        #         # versioned_path = versioner.version_csv_file('data/raw/csv/estudiosContables_leads.csv')
-        #         # logger.info(f"Archivo CSV versionado guardado en: {versioned_path}")
-        #         pass # Placeholder if DataVersioning is not ready or logic needs refinement
-        #     except Exception as e:
-        #         logger.error(f"Error al guardar leads en CSV: {e}")
 
         logger.info("Proceso ETL MANUAL completado exitosamente.")
         return {"status": "success", "message": "ETL Manual completado.", "records_processed": len(transformed_data)}
@@ -240,68 +200,54 @@ def process_manual_input(url: Optional[str] = None, file: Optional[str] = None, 
         logger.error(f"Error en el proceso ETL MANUAL: {e}", exc_info=True)
         return {"status": "error", "message": str(e)}
 
-def run_sequential_etl(rubros: Optional[List[str]] = None, localidades: Optional[List[str]] = None, output: str = "both") -> Dict[str, Any]:
+def run_sequential_etl(rubros: Optional[List[str]] = None, localidades: Optional[List[str]] = None, output: str = "file") -> Dict[str, Any]:
     """Ejecuta el proceso ETL secuencialmente basado en categorías (rubros) y localidades.
-
-    Esta función primero recolecta URLs basadas en los rubros y localidades provistos
-    usando SequentialCollector. Luego, hace scraping de datos de estas URLs
-    en paralelo usando instancias de GuiaCoresScraper gestionadas por un ProcessPoolExecutor.
-    Los datos scrapeados son luego transformados y cargados.
 
     Args:
         rubros: Una lista opcional de categorías (rubros) a procesar.
         localidades: Una lista opcional de localidades por las cuales filtrar.
         output: El destino para los datos de salida.
-                Puede ser "file", "database", o "both". Por defecto es "both".
+                Actualmente solo acepta "file". Por defecto es "file".
 
     Returns:
         Dict[str, Any]: Un diccionario conteniendo el estado del proceso ETL,
                         un mensaje, y el número de registros procesados.
     """
     logger.info(f"Iniciando ETL SEQUENTIAL. Rubros: {rubros}, Localidades: {localidades}, Output: {output}")
-    all_scraped_data = [] 
-    collector = None # Inicializar collector a None
+    all_scraped_data = []
+    collector = None
     try:
         from src.extractors.sequential_collector import SequentialCollector
-        from src.extractors.sequential_scraper import GuiaCoresScraper, process_url_chunk_for_sequential # Asegurar importación local si es necesario
+        from src.extractors.sequential_scraper import GuiaCoresScraper, process_url_chunk_for_sequential
         config = get_config()
         collector = SequentialCollector(rubros=rubros, localidades=localidades, config=config)
 
         logger.info("Recolectando URLs (Sequential)")
-        # urls_dict es un Dict[str, str] de {id_negocio: url}
         urls_dict: Dict[str, str] = collector.collect_urls()
-        # La limpieza del collector se hará en el finally block
 
         if not urls_dict:
             logger.warning("No se recolectaron URLs en modo Sequential. El ETL se detendrá.")
             return {"status": "warning", "message": "No se recolectaron URLs en modo Sequential.", "records_processed": 0}
         logger.info(f"Recolectadas {len(urls_dict)} URLs (Sequential)")
 
-        # Preparar lista de diccionarios para el scraper: [{'id_negocio': '...', 'url': '...'}, ...]
         urls_list_for_scraper = [{"id_negocio": id_negocio, "url": url_value} for id_negocio, url_value in urls_dict.items()]
 
         logger.info("Iniciando scraping de datos (Sequential) con procesamiento paralelo.")
-        
-        # Implementación real con ProcessPoolExecutor
-        max_workers = config.get('MAX_WORKERS', 4) # Obtener de config o un valor por defecto
-        chunk_size_scraper = config.get('CHUNK_SIZE_SCRAPER', 10) # Para distribuir trabajo
-        
+
+        max_workers = config.get('MAX_WORKERS', 4)
+        chunk_size_scraper = config.get('CHUNK_SIZE_SCRAPER', 10)
+
         logger.info(f"Usando {max_workers} workers y chunk size {chunk_size_scraper} para scraping paralelo.")
-        
+
         futures = []
-        # Usar ProcessPoolExecutor para ejecutar process_url_chunk_for_sequential en paralelo
         with ProcessPoolExecutor(max_workers=max_workers) as executor:
-            # Dividir la lista de URLs en trozos
             url_chunks = list(chunkify(urls_list_for_scraper, chunk_size_scraper))
             logger.info(f"Dividiendo {len(urls_list_for_scraper)} URLs en {len(url_chunks)} trozos.")
-            
-            # Enviar cada trozo al pool de procesos
+
             for i, chunk in enumerate(url_chunks):
-                # process_url_chunk_for_sequential debe aceptar el chunk y config
                 logger.info(f"Enviando trozo {i+1}/{len(url_chunks)} de URLs a un worker.")
                 futures.append(executor.submit(process_url_chunk_for_sequential, chunk, config))
 
-            # Recolectar resultados a medida que las tareas se completan
             for i, future in enumerate(as_completed(futures)):
                 logger.info(f"Recuperando resultado del trozo {i+1}/{len(url_chunks)}.")
                 try:
@@ -312,10 +258,7 @@ def run_sequential_etl(rubros: Optional[List[str]] = None, localidades: Optional
                     else:
                          logger.warning(f"El trozo {i+1} no devolvió datos scrapeados.")
                 except Exception as exc:
-                    # Registrar la excepción pero permitir que otros procesos continúen
                     logger.error(f"Una tarea de scraping (trozo {i+1}) generó una excepción: {exc}", exc_info=True)
-        
-        # Fin de la implementación real con ProcessPoolExecutor
 
         logger.info(f"Scrapeados {len(all_scraped_data)} registros (Sequential).")
 
@@ -342,7 +285,6 @@ def run_sequential_etl(rubros: Optional[List[str]] = None, localidades: Optional
         logger.error(f"Error en el proceso ETL SEQUENTIAL: {e}", exc_info=True)
         return {"status": "error", "message": str(e)}
     finally:
-        # Asegurar que el driver del collector se limpie
         if collector and hasattr(collector, 'cleanup') and callable(collector.cleanup):
             try:
                 collector.cleanup()
@@ -351,46 +293,36 @@ def run_sequential_etl(rubros: Optional[List[str]] = None, localidades: Optional
                 logger.error(f"Error durante la limpieza final del collector sequential: {cleanup_error}", exc_info=True)
 
 
-# Bloque principal para ejecución CLI (Interfaz de Línea de Comandos)
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Ejecutor de Procesos ETL para Guia Cores")
-    # 'required=True' para subparsers asegura que un modo siempre sea especificado.
     subparsers = parser.add_subparsers(dest="mode", help="Modo ETL a ejecutar", required=True)
 
-    # Modo Bulk (Masivo)
     bulk_parser = subparsers.add_parser("bulk", help="Ejecutar ETL en modo masivo para un rango de IDs.")
     bulk_parser.add_argument("--start_id", type=int, required=True, help="ID inicial para el procesamiento masivo.")
     bulk_parser.add_argument("--end_id", type=int, required=True, help="ID final para el procesamiento masivo.")
-    bulk_parser.add_argument("--output", type=str, default="both", choices=["file", "database", "both"], help="Destino de salida (file, database, o both).")
+    bulk_parser.add_argument("--output", type=str, default="file", choices=["file"], help="Destino de salida (file).")
 
-    # Modo Manual
-    manual_parser = subparsers.add_parser("manual", help="Ejecutar ETL para una URL única.")
-    # Create a mutually exclusive group for --url and --file
+    manual_parser = subparsers.add_parser("manual", help="Ejecutar ETL para una URL única o archivos HTML.")
     manual_group = manual_parser.add_mutually_exclusive_group(required=True)
     manual_group.add_argument("--url", type=str, help="La URL específica a scrapear.")
-    manual_group.add_argument("--file", type=str, help="Ruta al archivo de entrada.")
+    manual_group.add_argument("--file", type=str, help="Ruta al directorio de archivos HTML de entrada.")
+    manual_parser.add_argument("--output", type=str, default="file", choices=["file"], help="Destino de salida (file).")
 
-    manual_parser.add_argument("--output", type=str, default="both", choices=["file", "database", "both"], help="Destino de salida.")
-
-    # Modo Sequential (Secuencial)
     sequential_parser = subparsers.add_parser("sequential", help="Ejecutar ETL secuencialmente basado en categorías (rubros) y/o localidades.")
     sequential_parser.add_argument("--rubros", type=str, help="Lista de rubros separados por coma (ej., 'restaurantes,hoteles'). Opcional.")
     sequential_parser.add_argument("--localidades", type=str, help="Lista de localidades separadas por coma. Opcional.")
-    sequential_parser.add_argument("--output", type=str, default="both", choices=["file", "database", "both"], help="Destino de salida.")
+    sequential_parser.add_argument("--output", type=str, default="file", choices=["file"], help="Destino de salida (file).")
 
     args = parser.parse_args()
-
-    # setup_logging_if_not_configured() ya se llama a nivel de módulo, asegurando logs para CLI.
 
     try:
         if args.mode == "bulk":
             run_bulk_etl(args.start_id, args.end_id, args.output)
         elif args.mode == "manual":
-            # Depending on which argument was provided, call the appropriate function
             if args.url:
                 process_manual_input(url=args.url, output=args.output)
-            elif args.file: 
+            elif args.file:
                 process_manual_input(file=args.file, output=args.output)
         elif args.mode == "sequential":
             rubros_list = [r.strip() for r in args.rubros.split(',') if r.strip()] if args.rubros else None
