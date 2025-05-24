@@ -65,16 +65,16 @@ def _get_loaders(output_type: str, config: dict) -> List[Any]:
         config: El diccionario de configuración de la aplicación.
 
     Returns:
-        List[Any]: Una lista conteniendo objetos 'loader' instanciados (FileLoader).
+        List[Any]: A list containing instantiated 'loader' objects (FileLoader).
 
     Raises:
-        ValueError: Si output_type no es "file".
+        ValueError: If output_type is not "file".
     """
     loaders = []
     if output_type == "file":
         loaders.append(FileLoader(config=config))
     else:
-        raise ValueError(f"Tipo de salida inválido: {output_type}. Debe ser 'file'.")
+        raise ValueError(f"Invalid output type: {output_type}. Must be 'file'.")
     return loaders
 
 def run_bulk_etl(start_id: int, end_id: int, output: str = "file") -> Dict[str, Any]:
@@ -95,7 +95,7 @@ def run_bulk_etl(start_id: int, end_id: int, output: str = "file") -> Dict[str, 
         config = get_config()
         collector = BulkCollector(config=config, start_id=start_id, end_id=end_id)
         scraper = BulkScraper(config=config)
-        transformer = BusinessTransformer(config=config)
+        transformer = BusinessTransformer()
         loaders = _get_loaders(output, config)
 
         logger.info("Recolectando URLs (Bulk)")
@@ -135,21 +135,21 @@ def process_manual_input(url: Optional[str] = None, file: Optional[str] = None, 
     Args:
  url: La URL desde la cual extraer datos. Opcional.
 
-        file: La ruta al directorio que contiene archivos HTML para procesar. Opcional.
+        file: The path to the directory containing HTML files to process. Optional.
 
-        output: El destino para los datos de salida.
-                Actualmente solo acepta "file". Por defecto es "file".
+        output: The destination for the output data.
+                Currently only accepts "file". Defaults to "file".
 
     Returns:
-        Dict[str, Any]: Un diccionario conteniendo el estado del proceso ETL,
-                        un mensaje, y el número de registros procesados.
+        Dict[str, Any]: A dictionary containing the ETL process status,
+                        a message, and the number of processed records.
     """
     logger.info(f"Iniciando ETL MANUAL. URL: {url}, File: {file}, Output: {output}")
     scraped_data = []
     try:
         from src.extractors.manual_scraper import ManualScraper
         config = get_config()
-        transformer = BusinessTransformer(config=config)
+        transformer = BusinessTransformer()
         loaders = _get_loaders(output, config)
 
         if url:
@@ -165,8 +165,8 @@ def process_manual_input(url: Optional[str] = None, file: Optional[str] = None, 
             logger.info(f"Procesando archivos HTML desde: {file}")
             html_files_path = Path(file)
             if not html_files_path.is_dir():
-                 logger.error(f"Error: La ruta proporcionada no es un directorio: {file}")
-                 return {"status": "error", "message": f"La ruta proporcionada no es un directorio: {file}"}
+                 logger.error(f"Error: The provided path is not a directory: {file}")
+                 return {"status": "error", "message": f"The provided path is not a directory: {file}"}
 
             for html_file in html_files_path.glob("*.html"):
                 try:
@@ -178,12 +178,12 @@ def process_manual_input(url: Optional[str] = None, file: Optional[str] = None, 
                     scraped_data.append({"html_content": html_content}) # You'll need to define a structure for this
 
                 except Exception as e:
-                    logger.error(f"Error al leer o procesar el archivo {html_file}: {e}", exc_info=True)
+                    logger.error(f"Error reading or processing file {html_file}: {e}", exc_info=True)
 
             if not scraped_data:
-                logger.warning(f"No se encontraron archivos HTML en {file} o no se pudieron procesar.")
-                return {"status": "warning", "message": f"No se encontraron archivos HTML en {file} o no se pudieron procesar.", "records_processed": 0}
-            logger.info(f"Procesados {len(scraped_data)} archivos HTML.")
+                logger.warning(f"No HTML files found in {file} or could not be processed.")
+                return {"status": "warning", "message": f"No HTML files found in {file} or could not be processed.", "records_processed": 0}
+            logger.info(f"Processed {len(scraped_data)} HTML files.")
 
         logger.info("Transformando datos (Manual)")
         transformed_data = transformer.transform(scraped_data)
@@ -195,9 +195,9 @@ def process_manual_input(url: Optional[str] = None, file: Optional[str] = None, 
         logger.info(f"Carga de datos completada (Manual) usando {output}")
 
         logger.info("Proceso ETL MANUAL completado exitosamente.")
-        return {"status": "success", "message": "ETL Manual completado.", "records_processed": len(transformed_data)}
+        return {"status": "success", "message": "ETL Manual completed.", "records_processed": len(transformed_data)}
     except Exception as e:
-        logger.error(f"Error en el proceso ETL MANUAL: {e}", exc_info=True)
+        logger.error(f"Error in ETL MANUAL process: {e}", exc_info=True)
         return {"status": "error", "message": str(e)}
 
 def run_sequential_etl(rubros: Optional[List[str]] = None, localidades: Optional[List[str]] = None, output: str = "file") -> Dict[str, Any]:
@@ -266,7 +266,7 @@ def run_sequential_etl(rubros: Optional[List[str]] = None, localidades: Optional
             logger.warning("No se scrapearon datos en modo Sequential. El ETL se detendrá.")
             return {"status": "warning", "message": "No se scrapearon datos en modo sequential.", "records_processed": 0}
 
-        transformer = BusinessTransformer(config=config)
+        transformer = BusinessTransformer()
         loaders = _get_loaders(output, config)
 
         logger.info("Transformando datos (Sequential)")
@@ -305,13 +305,13 @@ if __name__ == "__main__":
 
     manual_parser = subparsers.add_parser("manual", help="Ejecutar ETL para una URL única o archivos HTML.")
     manual_group = manual_parser.add_mutually_exclusive_group(required=True)
-    manual_group.add_argument("--url", type=str, help="La URL específica a scrapear.")
-    manual_group.add_argument("--file", type=str, help="Ruta al directorio de archivos HTML de entrada.")
+    manual_group.add_argument("--url", type=str, help="The specific URL to scrape.")
+    manual_group.add_argument("--file", type=str, help="Path to the input HTML files directory.")
     manual_parser.add_argument("--output", type=str, default="file", choices=["file"], help="Destino de salida (file).")
 
     sequential_parser = subparsers.add_parser("sequential", help="Ejecutar ETL secuencialmente basado en categorías (rubros) y/o localidades.")
-    sequential_parser.add_argument("--rubros", type=str, help="Lista de rubros separados por coma (ej., 'restaurantes,hoteles'). Opcional.")
-    sequential_parser.add_argument("--localidades", type=str, help="Lista de localidades separadas por coma. Opcional.")
+    sequential_parser.add_argument("--rubros", type=str, help="Comma-separated list of categories (e.g., 'restaurants,hotels'). Optional.")
+    sequential_parser.add_argument("--localidades", type=str, help="Comma-separated list of localities. Optional.")
     sequential_parser.add_argument("--output", type=str, default="file", choices=["file"], help="Destino de salida (file).")
 
     args = parser.parse_args()
@@ -329,4 +329,4 @@ if __name__ == "__main__":
             localidades_list = [l.strip() for l in args.localidades.split(',') if l.strip()] if args.localidades else None
             run_sequential_etl(rubros_list, localidades_list, args.output)
     except Exception as e:
-        logger.error(f"Error en la ejecución del ETL: {e}", exc_info=True)
+        logger.error(f"Error during ETL execution: {e}", exc_info=True)

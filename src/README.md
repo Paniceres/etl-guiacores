@@ -11,12 +11,9 @@ src/
 │   ├── __init__.py
 │   ├── base.py               # Clases base o utilidades comunes (si existen)
 │   ├── config.py             # Carga y gestión de la configuración
-│   ├── db.py                 # Conexión y utilidades de base de datos
 │   ├── logger.py             # Configuración centralizada de logging
 │   ├── utils.py              # Funciones de utilidad general
 │   └── versioning.py         # Lógica para versionado de datos/archivos
-├── db/                       # Scripts o configuraciones de base de datos
-│   └── init.sql              # Script de inicialización de la BD
 ├── extractors/               # Módulos de Extracción (Collectors y Scrapers)
 │   ├── __init__.py
 │   ├── bulk_collector.py     # Colector para el modo Bulk
@@ -28,7 +25,6 @@ src/
 ├── loaders/                  # Módulos de Carga
 │   ├── __init__.py
 │   ├── cache_loader.py       # Cargador a caché (si aplica)
-│   ├── database_loader.py    # Cargador a la base de datos PostgreSQL
 │   └── file_loader.py        # Cargador a archivos locales (CSV, etc.)
 ├── transformers/             # Módulos de Transformación
 │   ├── __init__.py
@@ -42,11 +38,11 @@ src/
 
 ## Proceso ETL General
 
-El proceso ETL sigue un flujo estándar de **Extracción (E)**, **Transformación (T)** y **Carga (L)**. La ejecución es orquestada principalmente por el archivo `main.py`, que selecciona el flujo adecuado según el modo de ejecución (Bulk, Manual o Sequential).
+El proceso ETL sigue un flujo estándar de **Extracción (E)**, **Transformación (T)** y **Carga (L)**. La ejecución es orquestada principalmente por el archivo `main.py`, que selecciona el flujo adecuado según el modo de ejecución (Bulk, Manual o Sequential). Los datos transformados son guardados en archivos locales (CSV).
 
 ### Módulos Clave y su Rol:
 
-1.  **`common/config.py`**: Este módulo es fundamental al inicio de cualquier ejecución ETL. Se encarga de cargar la configuración de la aplicación, típicamente desde variables de entorno o un archivo `.env`. Proporciona acceso a parámetros como credenciales de base de datos, rutas de archivos, tamaños de chunk, etc.
+1.  **`common/config.py`**: Este módulo es fundamental al inicio de cualquier ejecución ETL. Se encarga de cargar la configuración de la aplicación, típicamente desde variables de entorno o un archivo `.env`. Proporciona acceso a parámetros como rutas de archivos, tamaños de chunk, etc.
 
 2.  **Módulos de Extracción (`extractors/`)**:
     *   Aquí residen los componentes encargados de obtener los datos brutos de la fuente (Guia Cores). Se dividen en **Collectors** y **Scrapers**.
@@ -59,12 +55,11 @@ El proceso ETL sigue un flujo estándar de **Extracción (E)**, **Transformació
 
 4.  **Módulos de Carga (`loaders/`)**:
     *   Estos módulos son responsables de tomar los datos transformados y persistirlos en uno o varios destinos.
-    *   `database_loader.py`: Se encarga de conectar con la base de datos PostgreSQL y guardar los datos en las tablas correspondientes (ej. tabla `leads`), manejando posibles duplicados (UPSERT).
     *   `file_loader.py`: Se encarga de guardar los datos en archivos locales, como CSV, JSON Lines, etc., en rutas especificadas.
 
 5.  **Módulos Comunes (`common/`)**:
     *   Este directorio agrupa utilidades y funcionalidades que son transversales a las diferentes etapas del ETL.
-    *   Incluye la configuración (`config.py`), la gestión de conexiones a la base de datos (`db.py`), la configuración del sistema de logging (`logger.py`), funciones de ayuda generales (`utils.py`), y lógica para versionado de datos/archivos (`versioning.py`).
+    *   Incluye la configuración (`config.py`), la configuración del sistema de logging (`logger.py`), funciones de ayuda generales (`utils.py`), y lógica para versionado de datos/archivos (`versioning.py`).
 
 6.  **`main.py`**:
     *   Este es el punto de entrada principal cuando se ejecuta el ETL desde la línea de comandos o se llama desde la API.
@@ -85,8 +80,8 @@ Aunque `main.py` orquesta el flujo, internamente, para un modo como "Bulk", la s
 8.  `run_bulk_etl` instancia `transformers/business_transformer.py`.
 9.  Llama a `business_transformer.transform` con los datos scrapeados.
 10. `business_transformer` devuelve los datos transformados.
-11. `run_bulk_etl` determina los loaders necesarios (`loaders/database_loader.py` y/o `loaders/file_loader.py`) usando `_get_loaders`.
-12. Itera sobre la lista de loaders y llama a `loader.load` para cada uno, guardando los datos transformados en la base de datos y/o en archivos.
+11. `run_bulk_etl` determina los loaders necesarios (`loaders/file_loader.py`) usando `_get_loaders`.
+12. Itera sobre la lista de loaders y llama a `loader.load` para cada uno, guardando los datos transformados en archivos.
 13. El proceso finaliza.
 
 Los modos Manual y Sequential seguirían un flujo similar, pero utilizando sus respectivos collectors y scrapers (`manual_scraper.py`, `sequential_collector.py`, `sequential_scraper.py`). Las utilidades en `common/` son accedidas según sea necesario por los otros módulos a lo largo de todo el proceso.
@@ -107,6 +102,6 @@ El flujo para el modo "Sequential" se centra en la extracción de datos basados 
 10. `run_sequential_etl` instancia `transformers/business_transformer.py`.
 11. Llama a `business_transformer.transform` con los datos scrapeados consolidados.
 12. `business_transformer` devuelve los datos transformados.
-13. `run_sequential_etl` determina los loaders necesarios (`loaders/database_loader.py` y/o `loaders/file_loader.py`) usando `_get_loaders`.
-14. Itera sobre la lista de loaders y llama a `loader.load` para cada uno, guardando los datos transformados en la base de datos y/o en archivos.
+13. `run_sequential_etl` determina los loaders necesarios (`loaders/file_loader.py`) usando `_get_loaders`.
+14. Itera sobre la lista de loaders y llama a `loader.load` para cada uno, guardando los datos transformados en archivos.
 15. El proceso finaliza, incluyendo una limpieza de emergencia del collector si ocurrió algún error antes de su limpieza normal.
