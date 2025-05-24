@@ -14,7 +14,6 @@ from bs4 import BeautifulSoup
 import urllib.parse
 import re
 from datetime import datetime
-from ..common.config import get_config
 
 # Configurar logging
 logging.basicConfig(
@@ -29,13 +28,13 @@ logger = logging.getLogger(__name__)
 
 class BulkScraper:
     """Scraper para el modo bulk que procesa URLs en paralelo"""
-    
-    def __init__(self):
-        self.config = get_config()
+
+    def __init__(self, config: dict):
+        self.config = config
         self.bulk_config = self.config['extractor']['bulk']
-        self.max_workers = self.bulk_config['max_workers']
-        self.timeout = self.bulk_config['timeout']
-        
+        self.max_workers = self.bulk_config.get('max_workers', 4)
+        self.timeout = self.bulk_config.get('timeout', 30)
+
     def _setup_driver(self) -> webdriver.Chrome:
         """Configura y retorna un driver de Chrome para el worker"""
         try:
@@ -65,8 +64,8 @@ class BulkScraper:
         """Extrae información de un negocio desde su URL"""
         try:
             driver.get(url)
-            business_id = url.split('id=')[-1]
-            
+            business_id = url.split('id=')[-1] if 'id=' in url else url.split('/')[-1]
+
             # Esperar elementos clave
             try:
                 WebDriverWait(driver, 10).until(
@@ -80,7 +79,7 @@ class BulkScraper:
             time.sleep(random.uniform(1, 2))
 
             soup = BeautifulSoup(driver.page_source, 'html.parser')
-            
+
             # Extraer información básica
             info = {
                 'id_negocio': business_id,
@@ -149,7 +148,7 @@ class BulkScraper:
                     soup.select_one('i.fa.fa-envelope + a.search-result-link')
         if email_link:
             return email_link.get_text(strip=True) if '@' in email_link.get_text(strip=True) else 'N/A'
-        
+
         email_text = soup.select_one('i.fa.fa-envelope + text')
         return email_text.strip() if email_text and '@' in email_text else 'N/A'
 
@@ -163,11 +162,11 @@ class BulkScraper:
         horario_icon = soup.select_one('i.far.fa-clock')
         if not horario_icon:
             return 'N/A'
-            
+
         horario_span = horario_icon.find_next(['span', 'div'], class_='search-result-address')
         if not horario_span:
             return 'N/A'
-            
+
         text = horario_span.get_text(strip=True)
         return text.replace('Cerrado', '').replace('Abierto', '').strip() or 'N/A'
 
@@ -177,7 +176,7 @@ class BulkScraper:
         if rubros_div:
             rubros = [link.get_text(strip=True) for link in rubros_div.find_all('a', class_='search-result-link')]
             return ', '.join(rubros) if rubros else 'N/A'
-            
+
         rubros_span = soup.select_one('span.search-result-category')
         return rubros_span.get_text(strip=True) if rubros_span else 'N/A'
 
@@ -202,30 +201,39 @@ class BulkScraper:
     def scrape_urls(self, urls: List[str]) -> List[Dict]:
         """
         Procesa una lista de URLs en paralelo usando múltiples workers
-        
+
         Args:
             urls (List[str]): Lista de URLs a procesar
-            
+
         Returns:
             List[Dict]: Lista de diccionarios con la información extraída
         """
         try:
             logger.info(f"Iniciando scraping de {len(urls)} URLs con {self.max_workers} workers")
-            
+
             # Dividir URLs en chunks para procesamiento paralelo
             chunk_size = len(urls) // self.max_workers + (1 if len(urls) % self.max_workers else 0)
             url_chunks = [urls[i:i + chunk_size] for i in range(0, len(urls), chunk_size)]
-            
-            # Procesar chunks en paralelo
+
+            # Process chunks in parallel using process pool executor
             all_results = []
             with ProcessPoolExecutor(max_workers=self.max_workers) as executor:
-                chunk_results = list(executor.map(self._process_urls_chunk, url_chunks))
-                for results in chunk_results:
-                    all_results.extend(results)
-            
+                # Use executor.submit and as_completed to get results as they finish
+                futures = {executor.submit(self._process_urls_chunk, chunk): chunk for chunk in url_chunks}
+                
+                for future in as_completed(futures):
+                    chunk = futures[future]
+                    try:
+                        chunk_result = future.result()
+                        if chunk_result:
+                            all_results.extend(chunk_result)
+                    except Exception as exc:
+                        logger.error(f'Chunk of urls {chunk} generated an exception: {exc}')
+
+
             logger.info(f"Scraping completado. Se extrajeron {len(all_results)} registros")
             return all_results
-            
+
         except Exception as e:
             logger.error(f"Error en el proceso de scraping: {e}")
             return []

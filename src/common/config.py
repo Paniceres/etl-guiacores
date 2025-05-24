@@ -26,15 +26,6 @@ CLEANER_LOGS = str(LOGS_DIR / 'cleaner' / 'cleaner_guiaCores_bulk.log')
 for log_dir in [LOGS_DIR / 'collector', LOGS_DIR / 'scraper', LOGS_DIR / 'cleaner']:
     log_dir.mkdir(exist_ok=True)
 
-# Configuración de la base de datos
-DB_CONFIG = {
-    'host': os.getenv('DB_HOST', 'localhost'),
-    'port': int(os.getenv('DB_PORT', 5432)),
-    'database': os.getenv('DB_NAME', 'guiacores'),
-    'user': os.getenv('DB_USER', 'postgres'),
-    'password': os.getenv('DB_PASSWORD', 'postgres')
-}
-
 # Configuración de logging
 LOG_CONFIG = {
     'version': 1,
@@ -103,36 +94,6 @@ LOADER_CONFIG = {
     'retry_delay': 5
 }
 
-# Configuración de las tablas
-TABLE_CONFIG = {
-    'urls': {
-        'name': 'urls',
-        'columns': [
-            ('id', 'SERIAL PRIMARY KEY'),
-            ('url', 'VARCHAR(255) UNIQUE NOT NULL'),
-            ('business_id', 'VARCHAR(50)'),
-            ('source', 'VARCHAR(50)'),
-            ('created_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP'),
-            ('updated_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP')
-        ]
-    },
-    'businesses': {
-        'name': 'businesses',
-        'columns': [
-            ('id', 'VARCHAR(50) PRIMARY KEY'),
-            ('name', 'VARCHAR(255) NOT NULL'),
-            ('url', 'VARCHAR(255) UNIQUE NOT NULL'),
-            ('address', 'VARCHAR(255)'),
-            ('phone', 'VARCHAR(50)'),
-            ('description', 'TEXT'),
-            ('rubro', 'VARCHAR(100)'),
-            ('localidad', 'VARCHAR(100)'),
-            ('created_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP'),
-            ('updated_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP')
-        ]
-    }
-}
-
 def get_config() -> Dict[str, Any]:
     """
     Obtiene la configuración del proyecto
@@ -144,11 +105,9 @@ def get_config() -> Dict[str, Any]:
         'base_dir': str(BASE_DIR),
         'data_dir': str(DATA_DIR),
         'logs_dir': str(LOGS_DIR),
-        'db': DB_CONFIG,
         'log': LOG_CONFIG,
         'app': APP_CONFIG,
         'extractor': EXTRACTOR_CONFIG,
         'transformer': TRANSFORMER_CONFIG,
         'loader': LOADER_CONFIG,
-        'tables': TABLE_CONFIG
-    } 
+    }
