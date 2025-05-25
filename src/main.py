@@ -106,6 +106,16 @@ def run_bulk_etl(start_id: int, end_id: int, output: str = "file") -> Dict[str, 
             logger.warning("No se recolectaron URLs en modo Bulk. El ETL se detendrá.")
             return {"status": "warning", "message": "No se recolectaron URLs en modo Bulk.", "records_processed": 0}
 
+        logger.info(f"URLs data type: {type(urls_data)}")
+        if urls_data and isinstance(urls_data, list):
+            for i, chunk in enumerate(urls_data):
+                logger.info(f"Chunk {i} data type: {type(chunk)}")
+                if isinstance(chunk, list):
+                    for j, url in enumerate(chunk):
+                        logger.info(f"URL {j} data type: {type(url)}, value: {url}")
+                else:
+                    logger.error(f"Chunk {i} is not a list.")
+
         logger.info("Haciendo scraping de datos (Bulk)")
         scraped_data = scraper.scrape_urls(urls_data)
         logger.info(f"Scrapeados {len(scraped_data)} registros (Bulk)")
