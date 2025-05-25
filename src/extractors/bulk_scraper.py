@@ -2,7 +2,7 @@ import time
 import random
 import logging
 from typing import List, Dict, Optional
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -228,7 +228,8 @@ class BulkScraper:
                         if chunk_result:
                             all_results.extend(chunk_result)
                     except Exception as exc:
-                        logger.error(f'Chunk of urls {chunk} generated an exception: {exc}')
+                        # Modificado para no intentar formatear la lista completa
+                        logger.error(f'An exception occurred while processing a chunk of {len(chunk)} urls: {exc}')
 
 
             logger.info(f"Scraping completado. Se extrajeron {len(all_results)} registros")
