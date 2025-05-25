@@ -5,8 +5,7 @@ from typing import Dict, Any, Tuple, List
 logger = logging.getLogger(__name__)
 
 class ManualCollector:
-    def __init__(self, config: Dict[str, Any]):
-        self.config = config
+    def __init__(self):
         logger.info("ManualCollector initialized.")
 
     def collect_url_data(self, url: str) -> Tuple[List[str], List[Any]]:

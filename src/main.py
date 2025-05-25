@@ -220,7 +220,7 @@ def run_sequential_etl(rubros: Optional[List[str]] = None, localidades: Optional
         from src.extractors.sequential_collector import SequentialCollector
         from src.extractors.sequential_scraper import GuiaCoresScraper, process_url_chunk_for_sequential
         config = get_config()
-        collector = SequentialCollector(rubros=rubros, localidades=localidades, config=config)
+        collector = SequentialCollector(rubros=rubros, localidades=localidades)
 
         logger.info("Recolectando URLs (Sequential)")
         urls_dict: Dict[str, str] = collector.collect_urls()
