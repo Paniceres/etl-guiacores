@@ -191,6 +191,7 @@ class BulkScraper:
         try:
             results = []
             for url in urls:
+                logger.info(f"Attempting to get URL: {url} (Type: {type(url)})")
                 info = self._extract_business_info(driver, url)
                 if info:
                     results.append(info)
