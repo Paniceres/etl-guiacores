@@ -23,7 +23,7 @@ SCRAPER_LOGS = str(LOGS_DIR / 'scraper' / 'scraper_guiaCores_bulk.log')
 CLEANER_LOGS = str(LOGS_DIR / 'cleaner' / 'cleaner_guiaCores_bulk.log')
 
 # Crear directorios de logs si no existen
-for log_dir in [LOGS_DIR / 'collector', LOGS_DIR / 'scraper', LOGS_DIR / 'cleaner']:
+for log_dir in [LOGS_DIR / 'collector', LOGS_DIR / 'scraper', LOGS_DIR / 'cleaner', LOGS_DIR / 'transformer']:
     log_dir.mkdir(exist_ok=True)
 
 # Configuración de logging
