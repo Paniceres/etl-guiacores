@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 from typing import List, Dict, Any
 import pandas as pd
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -23,9 +24,8 @@ class FileLoader:
             # Convert list of dictionaries to pandas DataFrame
             df = pd.DataFrame(data)
 
-            # Create a unique filename, e.g., using a timestamp or a specific identifier
-            # For simplicity, using a generic name with timestamp.
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            # Create a unique filename using timestamp with milliseconds
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
             output_file = self.output_dir / f"{filename_prefix}_{timestamp}.csv"
 
             # Save DataFrame to CSV
@@ -35,5 +35,3 @@ class FileLoader:
         except Exception as e:
             logger.error(f"Error writing data to CSV file: {e}", exc_info=True)
             raise
-
-from datetime import datetime # Import datetime here since it's used in the load method

@@ -65,7 +65,20 @@ elif mode == "Sequential":
 
     if st.button("Run Sequential ETL"):
         if rubros_list or localidades_list:
-             result = run_sequential_etl(rubros=rubros_list, localidades=localidades_list, output="file")
+             progress_bar = st.progress(0)
+             status_text = st.empty()
+             
+             def update_progress(current, total, message):
+                 status_text.text(message)
+                 if total and total > 0:
+                     progress = min(current / total, 1.0)
+                     progress_bar.progress(progress)
+                 else:
+                     progress_bar.progress(0)
+
+             result = run_sequential_etl(rubros=rubros_list, localidades=localidades_list, output="file", progress_callback=update_progress)
+             progress_bar.progress(1.0) # Ensure it completes
+             status_text.text("Recolección completada.")
         else:
             st.warning("Please enter at least one Rubro or Localidad.")
 

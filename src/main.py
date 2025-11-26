@@ -203,7 +203,7 @@ def process_manual_input(url: Optional[str] = None, file: Optional[str] = None, 
         logger.error(f"Error in ETL MANUAL process: {e}", exc_info=True)
         return {"status": "error", "message": str(e)}
 
-def run_sequential_etl(rubros: Optional[List[str]] = None, localidades: Optional[List[str]] = None, output: str = "file") -> Dict[str, Any]:
+def run_sequential_etl(rubros: Optional[List[str]] = None, localidades: Optional[List[str]] = None, output: str = "file", progress_callback=None) -> Dict[str, Any]:
     """Ejecuta el proceso ETL secuencialmente basado en categorías (rubros) y localidades.
 
     Args:
@@ -211,6 +211,7 @@ def run_sequential_etl(rubros: Optional[List[str]] = None, localidades: Optional
         localidades: Una lista opcional de localidades por las cuales filtrar.
         output: El destino para los datos de salida.
                 Actualmente solo acepta "file". Por defecto es "file".
+        progress_callback: Función opcional para reportar progreso.
 
     Returns:
         Dict[str, Any]: Un diccionario conteniendo el estado del proceso ETL,
@@ -226,7 +227,7 @@ def run_sequential_etl(rubros: Optional[List[str]] = None, localidades: Optional
         collector = SequentialCollector(rubros=rubros, localidades=localidades)
 
         logger.info("Recolectando URLs (Sequential)")
-        urls_dict: Dict[str, str] = collector.collect_urls()
+        urls_dict: Dict[str, str] = collector.collect_urls(progress_callback=progress_callback)
 
         if not urls_dict:
             logger.warning("No se recolectaron URLs en modo Sequential. El ETL se detendrá.")

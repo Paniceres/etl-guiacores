@@ -122,10 +122,13 @@ class SequentialCollector:
             self.driver = None
             return False
 
-    def collect_urls(self) -> Dict[str, str]:
+    def collect_urls(self, progress_callback=None) -> Dict[str, str]:
         """
         Procesa URLs secuencialmente para las combinaciones de rubro/localidad.
         Retorna un diccionario {id: url} de todas las URLs únicas recolectadas.
+        
+        Args:
+            progress_callback: Función opcional para reportar progreso (current_count, total_count, message)
         """
         if not self.setup_driver():
             self.logger.error("No se pudo configurar el driver. Abortando recolección.")
@@ -165,7 +168,7 @@ class SequentialCollector:
                 self.collected_urls = {}
 
                 try:
-                    self._process_search(rubro, localidad)
+                    self._process_search(rubro, localidad, progress_callback)
                     self.logger.info(f"Recolección finalizada para Rubro: {rubro if rubro else 'Por defecto'}, Localidad: {localidad if localidad else 'Por defecto'}.")
                     self.logger.info(f"URLs únicas recolectadas en esta combinación: {len(self.collected_urls)}")
 
@@ -190,7 +193,7 @@ class SequentialCollector:
         finally:
             self.cleanup()
 
-    def _process_search(self, rubro: Optional[str] = None, localidad: Optional[str] = None):
+    def _process_search(self, rubro: Optional[str] = None, localidad: Optional[str] = None, progress_callback=None):
         """
         Navega a la página de búsqueda (con o sin filtros) y simula clics en 'Ver Más'.
         """
@@ -220,8 +223,15 @@ class SequentialCollector:
                      self.logger.error(f"Error inesperado esperando resultados iniciales por defecto: {e}")
 
 
+            # Intentar extraer el total de coincidencias
+            total_matches = self._extract_total_matches()
+            if total_matches is not None:
+                self.logger.info(f"Total de coincidencias encontradas: {total_matches}")
+                if progress_callback:
+                    progress_callback(0, total_matches, f"Iniciando recolección. Total estimado: {total_matches}")
+            
             # Iniciar el bucle de simulación de clics en "Ver Más"
-            self._simulate_load_more_clicks()
+            self._simulate_load_more_clicks(progress_callback, total_matches)
 
         except WebDriverException as e:
             self.logger.error(f"Error de WebDriver durante la navegación o proceso de búsqueda: {e}")
@@ -326,6 +336,18 @@ class SequentialCollector:
                     self.logger.error(f"Error inesperado al interactuar con el dropdown de Localidad para '{localidad}': {e}")
 
 
+            # 4.5 Asegurar que "Tiene Mail" (#Tm) esté seleccionado
+            try:
+                tm_checkbox = self.driver.find_element(By.ID, "Tm")
+                if not tm_checkbox.is_selected():
+                    self.logger.info("Seleccionando filtro 'Tiene Mail' (#Tm).")
+                    tm_checkbox.click()
+                else:
+                    self.logger.info("Filtro 'Tiene Mail' (#Tm) ya estaba seleccionado.")
+            except Exception as e:
+                self.logger.warning(f"No se pudo interactuar con el checkbox 'Tiene Mail' (#Tm): {e}")
+
+
             # 5. Hacer clic en el botón de búsqueda dentro del formulario avanzado
             if applied_filters_count > 0: # Solo hacemos clic si se aplicó al menos un filtro con éxito
                 try:
@@ -427,7 +449,7 @@ class SequentialCollector:
             self.logger.error(f"Error inesperado al intentar cerrar el modal de búsqueda avanzada: {e}")
 
 
-    def _simulate_load_more_clicks(self):
+    def _simulate_load_more_clicks(self, progress_callback=None, total_matches=None):
         """
         Simula clics en el botón 'Ver Más' y extrae URLs iterativamente.
         """
@@ -448,8 +470,13 @@ class SequentialCollector:
             # Extraer URLs de los elementos actualmente visibles en el DOM
             self._extract_urls_from_current_page()
             current_element_count = len(self.collected_urls) # Contar elementos únicos recolectados hasta ahora
-
+            
             self.logger.info(f"Elementos únicos recolectados hasta ahora: {current_element_count}")
+            if progress_callback:
+                msg = f"Recolectados {current_element_count} URLs"
+                if total_matches:
+                    msg += f" de aprox. {total_matches}"
+                progress_callback(current_element_count, total_matches, msg)
 
             # Condición de parada 1: Si no se añadieron nuevos elementos en esta carga
             if current_element_count > 0 and page_count > 1 and current_element_count == last_element_count:
@@ -575,6 +602,41 @@ class SequentialCollector:
         except Exception as e:
             self.logger.error(f"Error general al extraer URLs de la página actual: {e}")
 
+
+    def _extract_total_matches(self) -> Optional[int]:
+        """
+        Intenta extraer el número total de coincidencias del texto en la página.
+        Busca un elemento h5.text-primary con el texto 'coincidencias'.
+        """
+        if not self.driver:
+            return None
+            
+        try:
+            # Buscar el elemento que contiene el texto
+            # Usamos una espera corta porque debería estar visible si cargaron los resultados
+            try:
+                element = WebDriverWait(self.driver, 5).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "h5.text-primary"))
+                )
+                text = element.text
+                # Buscar patrón numérico antes de "coincidencias"
+                # Ejemplo: "Su búsqueda ... ha generado 735 coincidencias"
+                match = re.search(r'generado\s+(\d+)\s+coincidencias', text)
+                if match:
+                    return int(match.group(1))
+                
+                # Intento alternativo solo buscando números y "coincidencias"
+                match = re.search(r'(\d+)\s+coincidencias', text)
+                if match:
+                    return int(match.group(1))
+                    
+            except TimeoutException:
+                self.logger.debug("No se encontró el elemento de conteo de coincidencias (h5.text-primary).")
+                
+        except Exception as e:
+            self.logger.warning(f"Error al intentar extraer total de coincidencias: {e}")
+            
+        return None
 
     def save_urls(self, filename_suffix: str = "") -> Optional[str]:
         """
